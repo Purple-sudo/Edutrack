@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3>Classes</h3>
+  <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addClassModal">Add Class</button>
+</div>
+
+<table class="table table-striped" id="classesTable">
+  <thead><tr><th>ID</th><th>Name</th></tr></thead>
+  <tbody></tbody>
+</table>
+
+<!-- Add class modal -->
+<div class="modal fade" id="addClassModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form id="addClassForm" class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">Add Class</h5></div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label>Class Name</label>
+          <input name="name" class="form-control" required>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal" type="button">Cancel</button>
+        <button class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadClasses(){
+  const res = await fetch('/api/classes');
+  if($.fn.DataTable.isDataTable('#classesTable')) {$('#classesTable').DataTable().clear().destroy();
+  }
+
+  const data = await res.json();
+  const tbody = document.querySelector('#classesTable tbody');
+  tbody.innerHTML = '';
+
+  data.forEach(c=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${c.id}</td><td>${c.name}</td>`;
+    tbody.appendChild(tr);
+  });
+
+$('#classesTable').DataTable({order: [[0, 'asc']] });
+}
+
+document.addEventListener('DOMContentLoaded', ()=> {
+  loadClasses();
+
+  document.getElementById('addClassForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const form = e.target;
+    const payload = { name: form.name.value.trim() };
+
+    if(!payload.name){
+      alert('Please enter a class name');
+      return;
+    }
+
+    const res = await fetch('/api/classes', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+
+    if(res.ok){
+      const modalEl = document.getElementById('addClassModal');
+      const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+      modal.hide();
+
+      form.reset();
+      loadClasses();
+    } else {
+      const text = await res.text();
+      console.error('Add class failed', res.status, text);
+      alert('Error adding class — check console or server logs.');
+    }
+  });
+});
+</script>
+{% endblock %}

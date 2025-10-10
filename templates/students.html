@@ -1,0 +1,211 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3>Students</h3>
+  <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addStudentModal">Add Student</button>
+</div>
+
+<table class="table table-striped" id="studentsTable">
+  <thead>
+<tr>
+<th>Admission No</th>
+<th>Name</th>
+<th>Class</th>
+<th>Date of Birth</th>
+<th>Gender</th>
+<th>Actions</th>
+</tr>
+</thead>
+  <tbody></tbody>
+</table>
+
+<!-- Add student modal -->
+<div class="modal fade" id="addStudentModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form id="addStudentForm" class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">Add Student</h5></div>
+      <div class="modal-body">
+
+        <div class="mb-3">
+<label>Admission No</label>
+<input name="admission_no" class="form-control">
+</div>
+
+        <div class="mb-3">
+<label>Name</label>
+<input name="name" class="form-control">
+</div>
+
+        <div class="mb-3">
+<label for="classSelect">Class</label>
+<select name="class_id" class="form-select" id="classSelect" required>
+       <option value="">Select a class</option>
+</select>
+</div>
+        <div class="mb-3">
+ <label>Date of Birth</label>
+<input type="date" name="dob" class="form-control">
+</div>
+
+
+        <div class="mb-3">
+<label>Gender</label>
+ <select name="gender" class="form-select">
+            <option value="">Select</option>
+            <option>Male</option>
+            <option>Female</option>
+            <option>Other</option>
+          </select>
+        </div>
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal" type="button">Cancel</button>
+        <button class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+
+<script>
+let studentsTable;
+
+async function loadStudents() {
+  const res = await fetch('/api/students');
+  const data = await res.json();
+
+  if (studentsTable && $.fn.DataTable.isDataTable('#studentsTable')) {
+    studentsTable.clear().destroy();
+    $('#studentsTable tbody').empty();
+  }
+
+  const tbody = document.querySelector('#studentsTable tbody');
+  tbody.innerHTML = '';
+
+  data.forEach(s => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${s.admission_no || ''}</td>
+      <td>${s.name || ''}</td>
+      <td>${s.class_name || ''}</td>
+      <td>${s.dob || ''}</td>
+      <td>${s.gender || ''}</td>
+      <td>
+        <button class="btn btn-sm btn-warning" onclick="editStudent(${s.id})">Edit</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteStudent(${s.id})">Delete</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  if ($.fn.DataTable.isDataTable('#studentsTable')){
+      studentsTable.clear().destroy();
+   }
+
+  studentsTable = $('#studentsTable').DataTable({
+    order: [[0, 'asc']]
+  });
+}
+
+async function loadClassesForDropdown() {
+  const res = await fetch('/api/classes');
+  if (!res.ok) {
+    console.error("Failed to load classes:", res.status);
+    return;
+  }
+
+  const classes = await res.json();
+  const select = document.getElementById('classSelect');
+  if (!select) {
+    console.error("classSelect dropdown not found in DOM");
+    return;
+  }
+
+  select.innerHTML = '<option value="">Select a class</option>';
+  classes.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.name;
+    select.appendChild(opt);
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  loadStudents();
+  loadClassesForDropdown();
+
+  const form = document.getElementById('addStudentForm');
+  const addModal = document.getElementById('addStudentModal');
+
+  if (addModal) {
+    addModal.addEventListener('show.bs.modal', loadClassesForDropdown);
+  }
+
+  if (form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const formData = new FormData(form);
+      const payload = Object.fromEntries(formData.entries());
+
+      const res = await fetch('/api/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        const modal = bootstrap.Modal.getInstance(addModal);
+        if (modal) modal.hide();
+
+        form.reset();
+        await loadStudents();
+      } else {
+        const text = await res.text();
+        console.error('Add student failed', res.status, text);
+        alert('Error adding student — check console or server logs.');
+      }
+    });
+  }
+});
+
+async function editStudent(id) {
+  try {
+    const res = await fetch(`/api/students/${id}`);
+    if (res.ok) {
+      const student = await res.json();
+      document.getElementById('student_id').value = student.id;
+      document.getElementById('name').value = student.name;
+      document.getElementById('email').value = student.email;
+      document.getElementById('class_id').value = student.class_id;
+    } else {
+      alert('Failed to load student details.');
+    }
+  } catch (error) {
+    console.error('Error loading student:', error);
+  }
+}
+
+async function deleteStudent(id) {
+  if (!confirm('Are you sure you want to delete this student?')) return;
+
+  try {
+    const res = await fetch(`/api/students/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      alert('Student deleted successfully!');
+      loadStudents();
+    } else {
+      alert('Failed to delete student.');
+    }
+  } catch (error) {
+    console.error('Error deleting student:', error);
+  }
+}
+</script>
+{% endblock %}
