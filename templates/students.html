@@ -24,6 +24,7 @@
 <div class="modal fade" id="addStudentModal" tabindex="-1">
   <div class="modal-dialog">
     <form id="addStudentForm" class="modal-content">
+    <input type="hidden" name="id">
       <div class="modal-header"><h5 class="modal-title">Add Student</h5></div>
       <div class="modal-body">
 
@@ -74,66 +75,75 @@
 {% block scripts %}
 
 <script>
-let studentsTable;
+let studentsTable = null;
 
 async function loadStudents() {
   const res = await fetch('/api/students');
+  if (!res.ok) {
+    console.error('Failed to load students:', res.status);
+    alert('Failed to load students.');
+    return;
+  }
   const data = await res.json();
 
-  if (studentsTable && $.fn.DataTable.isDataTable('#studentsTable')) {
-    studentsTable.clear().destroy();
-    $('#studentsTable tbody').empty();
+  // Always tear down before repopulating to avoid TN/18 column mismatch
+  if ($.fn.DataTable.isDataTable('#studentsTable')) {
+    $('#studentsTable').DataTable().clear().destroy();
   }
 
   const tbody = document.querySelector('#studentsTable tbody');
-  tbody.innerHTML = '';
+  tbody.textContent = '';
 
-  data.forEach(s => {
+  for (const s of data) {
     const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${s.admission_no || ''}</td>
-      <td>${s.name || ''}</td>
-      <td>${s.class_name || ''}</td>
-      <td>${s.dob || ''}</td>
-      <td>${s.gender || ''}</td>
-      <td>
-        <button class="btn btn-sm btn-warning" onclick="editStudent(${s.id})">Edit</button>
-        <button class="btn btn-sm btn-danger" onclick="deleteStudent(${s.id})">Delete</button>
-      </td>
-    `;
-    tbody.appendChild(tr);
-  });
 
-  if ($.fn.DataTable.isDataTable('#studentsTable')){
-      studentsTable.clear().destroy();
-   }
+    const values = [
+      s.admission_no ?? '',
+      s.name ?? '',
+      s.class_name ?? '',
+      s.dob ?? '',
+      s.gender ?? '',
+    ];
+
+    for (const v of values) {
+      const td = document.createElement('td');
+      td.textContent = v;
+      tr.appendChild(td);
+    }
+
+    const actionsTd = document.createElement('td');
+    actionsTd.innerHTML = `
+      <button class="btn btn-sm btn-warning" onclick="editStudent(${s.id})">Edit</button>
+      <button class="btn btn-sm btn-danger" onclick="deleteStudent(${s.id})">Delete</button>
+    `;
+    tr.appendChild(actionsTd);
+
+    tbody.appendChild(tr);
+  }
 
   studentsTable = $('#studentsTable').DataTable({
-    order: [[0, 'asc']]
+    order: [[0, 'asc']],
+    autoWidth: false,
+    destroy: true
   });
 }
 
-async function loadClassesForDropdown() {
+async function loadClassesForDropdown(selectedId) {
   const res = await fetch('/api/classes');
   if (!res.ok) {
-    console.error("Failed to load classes:", res.status);
+    console.error('Failed to load classes:', res.status);
     return;
   }
-
   const classes = await res.json();
   const select = document.getElementById('classSelect');
-  if (!select) {
-    console.error("classSelect dropdown not found in DOM");
-    return;
-  }
-
   select.innerHTML = '<option value="">Select a class</option>';
-  classes.forEach(c => {
+  for (const c of classes) {
     const opt = document.createElement('option');
     opt.value = c.id;
     opt.textContent = c.name;
+    if (selectedId && String(selectedId) === String(c.id)) opt.selected = true;
     select.appendChild(opt);
-  });
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -142,64 +152,75 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const form = document.getElementById('addStudentForm');
   const addModal = document.getElementById('addStudentModal');
+  const modalTitle = addModal.querySelector('.modal-title');
 
-  if (addModal) {
-    addModal.addEventListener('show.bs.modal', loadClassesForDropdown);
-  }
+  addModal.addEventListener('show.bs.modal', () => loadClassesForDropdown());
+  addModal.addEventListener('hidden.bs.modal', () => {
+    form.reset();
+    form.querySelector('[name="id"]').value = '';
+    modalTitle.textContent = 'Add Student';
+  });
 
-  if (form) {
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
 
-      const formData = new FormData(form);
-      const payload = Object.fromEntries(formData.entries());
+    const formData = new FormData(form);
+    const id = formData.get('id');
+    const payload = Object.fromEntries(formData.entries());
 
-      const res = await fetch('/api/students', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+    const url = id ? `/api/students/${id}` : '/api/students';
+    const method = id ? 'PUT' : 'POST';
 
-      if (res.ok) {
-        const modal = bootstrap.Modal.getInstance(addModal);
-        if (modal) modal.hide();
-
-        form.reset();
-        await loadStudents();
-      } else {
-        const text = await res.text();
-        console.error('Add student failed', res.status, text);
-        alert('Error adding student — check console or server logs.');
-      }
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
     });
-  }
+
+    if (res.ok) {
+      bootstrap.Modal.getOrCreateInstance(addModal).hide();
+      await loadStudents();
+    } else {
+      console.error('Save failed', res.status, await res.text());
+      alert('Error saving student — check console or server logs.');
+    }
+  });
 });
 
 async function editStudent(id) {
+  const addModal = document.getElementById('addStudentModal');
+  const form = document.getElementById('addStudentForm');
+  const modalTitle = addModal.querySelector('.modal-title');
+
   try {
     const res = await fetch(`/api/students/${id}`);
-    if (res.ok) {
-      const student = await res.json();
-      document.getElementById('student_id').value = student.id;
-      document.getElementById('name').value = student.name;
-      document.getElementById('email').value = student.email;
-      document.getElementById('class_id').value = student.class_id;
-    } else {
+    if (!res.ok) {
       alert('Failed to load student details.');
+      return;
     }
-  } catch (error) {
-    console.error('Error loading student:', error);
+    const s = await res.json();
+
+    form.querySelector('[name="id"]').value = s.id ?? '';
+    form.querySelector('[name="admission_no"]').value = s.admission_no ?? '';
+    form.querySelector('[name="name"]').value = s.name ?? '';
+    form.querySelector('[name="dob"]').value = s.dob ?? '';
+    form.querySelector('[name="gender"]').value = s.gender ?? '';
+    await loadClassesForDropdown(s.class_id);
+    modalTitle.textContent = 'Edit Student';
+
+    bootstrap.Modal.getOrCreateInstance(addModal).show();
+  } catch (err) {
+    console.error('Error loading student:', err);
+    alert('Failed to load student details.');
   }
 }
 
 async function deleteStudent(id) {
   if (!confirm('Are you sure you want to delete this student?')) return;
-
   try {
     const res = await fetch(`/api/students/${id}`, { method: 'DELETE' });
     if (res.ok) {
-      alert('Student deleted successfully!');
-      loadStudents();
+      await loadStudents();
     } else {
       alert('Failed to delete student.');
     }

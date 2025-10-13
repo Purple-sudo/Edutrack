@@ -141,6 +141,42 @@ def api_students():
     db.session.add(s)
     db.session.commit()
     return jsonify(s.to_dict()), 201
+
+@app.route('/api/students/<int:id>', methods=['GET'])
+@login_required
+def get_student(id):
+    student = Student.query.get_or_404(id)
+    return jsonify(student.to_dict())
+
+@app.route('/api/students/<int:id>', methods=['PUT'])
+@login_required
+def update_student(id):
+    student = Student.query.get_or_404(id)
+    data = request.json
+
+    student.admission_no = data.get('admission_no', student.admission_no)
+    student.name = data.get('name', student.name)
+    student.class_id = data.get('class_id', student.class_id)
+    student.gender = data.get('gender', student.gender)
+
+    dob_value = data.get('dob')
+    if dob_value:
+        try:
+            student.dob = datetime.strptime(dob_value, "%Y-%m-%d").date()
+        except ValueError:
+            pass
+
+    db.session.commit()
+    return jsonify(student.to_dict())
+
+@app.route('/api/students/<int:id>', methods=['DELETE'])
+@login_required
+def delete_student(id):
+    student = Student.query.get_or_404(id)
+    db.session.delete(student)
+    db.session.commit()
+    return jsonify({'message': 'Deleted successfully'}), 200
+
 # app.py (new) - classes page
 @app.route('/classes')
 @login_required
