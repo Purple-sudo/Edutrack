@@ -2,6 +2,7 @@
 import os
 from flask import Flask, render_template, redirect, url_for, request, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -13,9 +14,11 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL') or 'sqlit
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 # app.py (part 2) - models
+
 class Role(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), unique=True, nullable=False)
@@ -52,6 +55,26 @@ class Student(db.Model):
             'gender': self.gender,
             'class_name': self.class_rel.name if self.class_rel else None,
         }
+class Teacher(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    teacher_no = db.Column(db.String(20), unique=True, nullable=False)
+    name = db.Column(db.String(120), nullable=False)
+    email = db.Column(db.String(120))
+    phone = db.Column(db.String(20))
+    gender = db.Column(db.String(10))
+    subject_specialization = db.Column(db.String(100))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'teacher_no': self.teacher_no,
+            'name': self.name,
+            'email': self.email,
+            'phone': self.phone,
+            'gender': self.gender,
+            'subject_specialization': self.subject_specialization
+        }
+
 # app.py (part 3) - login loader & seed command
 @login_manager.user_loader
 def load_user(user_id):
@@ -109,19 +132,35 @@ def logout():
 def dashboard():
     total_students = Student.query.count()
     total_classes = Class.query.count()
-    return render_template('dashboard.html', total_students=total_students, total_classes=total_classes)
+    total_teachers = User.query.join(Role).filter(Role.name == 'Teacher').count()
+    return render_template('dashboard.html', 
+                         total_students=total_students, 
+                         total_classes=total_classes,
+                         total_teachers=total_teachers,
+                         user_role=current_user.role.name)
 # app.py (part 5) - students page and API
+
 @app.route('/students')
 @login_required
 def students_page():
+    # Check if user has permission to access students
+    if current_user.role.name not in ['Admin', 'Teacher']:
+        flash("Access denied: Admins and Teachers only.")
+        return redirect(url_for('dashboard'))
+    
     return render_template('students.html')
 
 @app.route('/api/students', methods=['GET','POST'])
 @login_required
 def api_students():
+    # Check if user has permission to access students
+    if current_user.role.name not in ['Admin', 'Teacher']:
+        return jsonify({'error': 'Access denied'}), 403
+    
     if request.method == 'GET':
         students = Student.query.all()
         return jsonify([s.to_dict() for s in students])
+    
     data = request.json
     dob_value = data.get('dob')
     dob_parsed = None
@@ -145,12 +184,20 @@ def api_students():
 @app.route('/api/students/<int:id>', methods=['GET'])
 @login_required
 def get_student(id):
+    # Check if user has permission to access students
+    if current_user.role.name not in ['Admin', 'Teacher']:
+        return jsonify({'error': 'Access denied'}), 403
+    
     student = Student.query.get_or_404(id)
     return jsonify(student.to_dict())
 
 @app.route('/api/students/<int:id>', methods=['PUT'])
 @login_required
 def update_student(id):
+    # Check if user has permission to access students
+    if current_user.role.name not in ['Admin', 'Teacher']:
+        return jsonify({'error': 'Access denied'}), 403
+    
     student = Student.query.get_or_404(id)
     data = request.json
 
@@ -172,21 +219,102 @@ def update_student(id):
 @app.route('/api/students/<int:id>', methods=['DELETE'])
 @login_required
 def delete_student(id):
+    # Check if user has permission to access students
+    if current_user.role.name not in ['Admin', 'Teacher']:
+        return jsonify({'error': 'Access denied'}), 403
+    
     student = Student.query.get_or_404(id)
     db.session.delete(student)
     db.session.commit()
     return jsonify({'message': 'Deleted successfully'}), 200
 
+# ==============================
+#   ADMIN: Teacher Management
+# ==============================
+@app.route('/teachers')
+@login_required
+def teachers():
+    if current_user.role.name != 'Admin':
+        flash("Access denied: Admins only.")
+        return redirect(url_for('dashboard'))
+    
+    teachers = User.query.join(Role).filter(Role.name == 'Teacher').all()
+    return render_template('teachers.html', teachers=teachers)
+
+
+@app.route('/teacher/add', methods=['GET', 'POST'])
+@login_required
+def add_teacher():
+    if current_user.role.name != 'Admin':
+        flash("Access denied: Admins only.")
+        return redirect(url_for('teachers'))
+
+    if request.method == 'POST':
+        name = request.form['name']
+        email = request.form['email']
+        password = generate_password_hash(request.form['password'])
+        teacher_role = Role.query.filter_by(name='Teacher').first()
+
+        new_teacher = User(name=name, email=email, password_hash=password, role=teacher_role)
+        db.session.add(new_teacher)
+        db.session.commit()
+        flash('Teacher added successfully!')
+        return redirect(url_for('teachers'))
+
+    return render_template('add_teacher.html')
+
+
+@app.route('/teacher/edit/<int:id>', methods=['GET', 'POST'])
+@login_required
+def edit_teacher(id):
+    if current_user.role.name != 'Admin':
+        flash("Access denied: Admins only.")
+        return redirect(url_for('teachers'))
+
+    teacher = User.query.get_or_404(id)
+
+    if request.method == 'POST':
+        teacher.name = request.form['name']
+        teacher.email = request.form['email']
+        db.session.commit()
+        flash('Teacher updated successfully!')
+        return redirect(url_for('teachers'))
+
+    return render_template('edit_teacher.html', teacher=teacher)
+
+
+@app.route('/teacher/delete/<int:id>', methods=['POST'])
+@login_required
+def delete_teacher(id):
+    if current_user.role.name != 'Admin':
+        flash("Access denied: Admins only.")
+        return redirect(url_for('teachers'))
+
+    teacher = User.query.get_or_404(id)
+    db.session.delete(teacher)
+    db.session.commit()
+    flash('Teacher deleted successfully!')
+    return redirect(url_for('teachers'))
+
 # app.py (new) - classes page
 @app.route('/classes')
 @login_required
 def classes_page():
+    # Check if user has permission to access classes
+    if current_user.role.name not in ['Admin', 'Teacher']:
+        flash("Access denied: Admins and Teachers only.")
+        return redirect(url_for('dashboard'))
+    
     return render_template('classes.html')
 
 # app.py (new) - classes API
 @app.route('/api/classes', methods=['GET', 'POST'])
-
+@login_required
 def api_classes():
+    # Check if user has permission to access classes
+    if current_user.role.name not in ['Admin', 'Teacher']:
+        return jsonify({'error': 'Access denied'}), 403
+    
     if request.method == 'GET':
         classes = Class.query.all()
         return jsonify([{"id": c.id, "name": c.name} for c in classes])
