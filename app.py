@@ -83,25 +83,183 @@ def load_user(user_id):
 @app.cli.command('initdata')
 def initdata():
     """
-    Create DB tables and seed roles + an admin user.
+    Create DB tables and seed roles + sample users, classes, and data.
     Run in PowerShell: flask --app app.py initdata
     """
+    from datetime import date
+    
     db.create_all()
+    
+    # Create roles if they don't exist
     if not Role.query.first():
-        for r in ['Admin', 'Teacher', 'Student', 'Parent']:
-            db.session.add(Role(name=r))
+        roles = ['Admin', 'Teacher', 'Student', 'Parent']
+        for role_name in roles:
+            db.session.add(Role(name=role_name))
         db.session.commit()
-    if not User.query.filter_by(email='admin@example.com').first():
+        print('✓ Created roles: Admin, Teacher, Student, Parent')
+    
+    # Get role objects
         admin_role = Role.query.filter_by(name='Admin').first()
-        u = User(
-            name='Admin User',
-            email='admin@example.com',
-            password_hash=generate_password_hash('password123'),
+    teacher_role = Role.query.filter_by(name='Teacher').first()
+    student_role = Role.query.filter_by(name='Student').first()
+    parent_role = Role.query.filter_by(name='Parent').first()
+    
+    # Create sample admin users
+    admin_users = [
+        {'name': 'Admin User', 'email': 'admin@example.com', 'password': 'password123'},
+        {'name': 'John Administrator', 'email': 'john.admin@edutrack.com', 'password': 'admin2024'},
+        {'name': 'Sarah Principal', 'email': 'principal@edutrack.com', 'password': 'principal123'}
+    ]
+    
+    for admin_data in admin_users:
+        if not User.query.filter_by(email=admin_data['email']).first():
+            user = User(
+                name=admin_data['name'],
+                email=admin_data['email'],
+                password_hash=generate_password_hash(admin_data['password']),
             role=admin_role
         )
-        db.session.add(u)
+            db.session.add(user)
+    
+    # Create sample teacher users
+    teacher_users = [
+        {'name': 'Michael Johnson', 'email': 'michael.johnson@edutrack.com', 'password': 'teacher123'},
+        {'name': 'Emily Davis', 'email': 'emily.davis@edutrack.com', 'password': 'teacher123'},
+        {'name': 'David Wilson', 'email': 'david.wilson@edutrack.com', 'password': 'teacher123'},
+        {'name': 'Lisa Anderson', 'email': 'lisa.anderson@edutrack.com', 'password': 'teacher123'},
+        {'name': 'Robert Brown', 'email': 'robert.brown@edutrack.com', 'password': 'teacher123'}
+    ]
+    
+    for teacher_data in teacher_users:
+        if not User.query.filter_by(email=teacher_data['email']).first():
+            user = User(
+                name=teacher_data['name'],
+                email=teacher_data['email'],
+                password_hash=generate_password_hash(teacher_data['password']),
+                role=teacher_role
+            )
+            db.session.add(user)
+    
+    # Create sample student users
+    student_users = [
+        {'name': 'Alice Smith', 'email': 'alice.smith@student.edu', 'password': 'student123'},
+        {'name': 'Bob Johnson', 'email': 'bob.johnson@student.edu', 'password': 'student123'},
+        {'name': 'Carol Williams', 'email': 'carol.williams@student.edu', 'password': 'student123'},
+        {'name': 'Daniel Brown', 'email': 'daniel.brown@student.edu', 'password': 'student123'},
+        {'name': 'Eva Garcia', 'email': 'eva.garcia@student.edu', 'password': 'student123'}
+    ]
+    
+    for student_data in student_users:
+        if not User.query.filter_by(email=student_data['email']).first():
+            user = User(
+                name=student_data['name'],
+                email=student_data['email'],
+                password_hash=generate_password_hash(student_data['password']),
+                role=student_role
+            )
+            db.session.add(user)
+    
+    # Create sample parent users
+    parent_users = [
+        {'name': 'Mary Smith', 'email': 'mary.smith@parent.com', 'password': 'parent123'},
+        {'name': 'James Johnson', 'email': 'james.johnson@parent.com', 'password': 'parent123'},
+        {'name': 'Patricia Williams', 'email': 'patricia.williams@parent.com', 'password': 'parent123'},
+        {'name': 'Michael Brown', 'email': 'michael.brown@parent.com', 'password': 'parent123'},
+        {'name': 'Linda Garcia', 'email': 'linda.garcia@parent.com', 'password': 'parent123'}
+    ]
+    
+    for parent_data in parent_users:
+        if not User.query.filter_by(email=parent_data['email']).first():
+            user = User(
+                name=parent_data['name'],
+                email=parent_data['email'],
+                password_hash=generate_password_hash(parent_data['password']),
+                role=parent_role
+            )
+            db.session.add(user)
+    
+    db.session.commit()
+    print('✓ Created sample users for all roles')
+    
+    # Create sample classes
+    if not Class.query.first():
+        teacher_users_db = User.query.join(Role).filter(Role.name == 'Teacher').all()
+        sample_classes = [
+            {'name': 'Grade 1A', 'teacher_id': teacher_users_db[0].id if teacher_users_db else None},
+            {'name': 'Grade 1B', 'teacher_id': teacher_users_db[1].id if len(teacher_users_db) > 1 else None},
+            {'name': 'Grade 2A', 'teacher_id': teacher_users_db[2].id if len(teacher_users_db) > 2 else None},
+            {'name': 'Grade 3A', 'teacher_id': teacher_users_db[3].id if len(teacher_users_db) > 3 else None},
+            {'name': 'Grade 4A', 'teacher_id': teacher_users_db[4].id if len(teacher_users_db) > 4 else None},
+        ]
+        
+        for class_data in sample_classes:
+            class_obj = Class(name=class_data['name'], teacher_id=class_data['teacher_id'])
+            db.session.add(class_obj)
+        
         db.session.commit()
-    print('Initialized DB and added admin@example.com / password123')
+        print('✓ Created sample classes')
+    
+    # Create sample teacher records in Teacher table
+    if not Teacher.query.first():
+        sample_teachers = [
+            {'teacher_no': 'T001', 'name': 'Michael Johnson', 'email': 'michael.johnson@edutrack.com', 
+             'phone': '555-0101', 'gender': 'Male', 'subject_specialization': 'Mathematics'},
+            {'teacher_no': 'T002', 'name': 'Emily Davis', 'email': 'emily.davis@edutrack.com', 
+             'phone': '555-0102', 'gender': 'Female', 'subject_specialization': 'English Literature'},
+            {'teacher_no': 'T003', 'name': 'David Wilson', 'email': 'david.wilson@edutrack.com', 
+             'phone': '555-0103', 'gender': 'Male', 'subject_specialization': 'Science'},
+            {'teacher_no': 'T004', 'name': 'Lisa Anderson', 'email': 'lisa.anderson@edutrack.com', 
+             'phone': '555-0104', 'gender': 'Female', 'subject_specialization': 'History'},
+            {'teacher_no': 'T005', 'name': 'Robert Brown', 'email': 'robert.brown@edutrack.com', 
+             'phone': '555-0105', 'gender': 'Male', 'subject_specialization': 'Physical Education'},
+        ]
+        
+        for teacher_data in sample_teachers:
+            teacher = Teacher(**teacher_data)
+            db.session.add(teacher)
+        
+        db.session.commit()
+        print('✓ Created sample teacher records')
+    
+    # Create sample students
+    if not Student.query.first():
+        classes = Class.query.all()
+        sample_students = [
+            {'admission_no': 'S001', 'name': 'Alice Smith', 'class_id': classes[0].id if classes else None, 
+             'dob': date(2016, 3, 15), 'gender': 'Female'},
+            {'admission_no': 'S002', 'name': 'Bob Johnson', 'class_id': classes[0].id if classes else None, 
+             'dob': date(2016, 7, 22), 'gender': 'Male'},
+            {'admission_no': 'S003', 'name': 'Carol Williams', 'class_id': classes[1].id if len(classes) > 1 else None, 
+             'dob': date(2016, 11, 8), 'gender': 'Female'},
+            {'admission_no': 'S004', 'name': 'Daniel Brown', 'class_id': classes[1].id if len(classes) > 1 else None, 
+             'dob': date(2016, 5, 30), 'gender': 'Male'},
+            {'admission_no': 'S005', 'name': 'Eva Garcia', 'class_id': classes[2].id if len(classes) > 2 else None, 
+             'dob': date(2015, 9, 12), 'gender': 'Female'},
+            {'admission_no': 'S006', 'name': 'Frank Miller', 'class_id': classes[2].id if len(classes) > 2 else None, 
+             'dob': date(2015, 12, 3), 'gender': 'Male'},
+            {'admission_no': 'S007', 'name': 'Grace Wilson', 'class_id': classes[3].id if len(classes) > 3 else None, 
+             'dob': date(2014, 4, 18), 'gender': 'Female'},
+            {'admission_no': 'S008', 'name': 'Henry Davis', 'class_id': classes[3].id if len(classes) > 3 else None, 
+             'dob': date(2014, 8, 25), 'gender': 'Male'},
+            {'admission_no': 'S009', 'name': 'Ivy Anderson', 'class_id': classes[4].id if len(classes) > 4 else None, 
+             'dob': date(2013, 6, 7), 'gender': 'Female'},
+            {'admission_no': 'S010', 'name': 'Jack Thompson', 'class_id': classes[4].id if len(classes) > 4 else None, 
+             'dob': date(2013, 10, 14), 'gender': 'Male'},
+        ]
+        
+        for student_data in sample_students:
+            student = Student(**student_data)
+            db.session.add(student)
+        
+        db.session.commit()
+        print('✓ Created sample student records')
+    
+    print('\n🎉 Database seeding completed successfully!')
+    print('\nSample login credentials:')
+    print('👨‍💼 Admin: admin@example.com / password123')
+    print('👨‍🏫 Teacher: michael.johnson@edutrack.com / teacher123')
+    print('👨‍🎓 Student: alice.smith@student.edu / student123')
+    print('👨‍👩‍👧‍👦 Parent: mary.smith@parent.com / parent123')
 # app.py (part 4) - auth and main pages
 @app.route('/')
 def home():
