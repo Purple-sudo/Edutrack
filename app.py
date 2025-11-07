@@ -75,6 +75,33 @@ class Teacher(db.Model):
             'subject_specialization': self.subject_specialization
         }
 
+# Association table for many-to-many relationship between teachers and subjects
+teacher_subject = db.Table('teacher_subject',
+    db.Column('teacher_id', db.Integer, db.ForeignKey('user.id'), primary_key=True),
+    db.Column('subject_id', db.Integer, db.ForeignKey('subject.id'), primary_key=True)
+)
+
+class Subject(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), unique=True, nullable=False)
+    code = db.Column(db.String(20), unique=True, nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # Many-to-many relationship with teachers
+    teachers = db.relationship('User', secondary=teacher_subject, backref=db.backref('subjects', lazy='dynamic'))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'code': self.code,
+            'description': self.description,
+            'created_by': self.created_by,
+            'created_at': self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
+            'teacher_count': len(self.teachers) if self.teachers else 0
+        }
+
 # app.py (part 3) - login loader & seed command
 @login_manager.user_loader
 def load_user(user_id):
@@ -96,10 +123,10 @@ def initdata():
         for role_name in roles:
             db.session.add(Role(name=role_name))
         db.session.commit()
-        print('✓ Created roles: Admin, Teacher, Student, Parent')
+        print('[OK] Created roles: Admin, Teacher, Student, Parent')
     
     # Get role objects
-        admin_role = Role.query.filter_by(name='Admin').first()
+    admin_role = Role.query.filter_by(name='Admin').first()
     teacher_role = Role.query.filter_by(name='Teacher').first()
     student_role = Role.query.filter_by(name='Student').first()
     parent_role = Role.query.filter_by(name='Parent').first()
@@ -179,7 +206,7 @@ def initdata():
             db.session.add(user)
     
     db.session.commit()
-    print('✓ Created sample users for all roles')
+    print('[OK] Created sample users for all roles')
     
     # Create sample classes
     if not Class.query.first():
@@ -197,7 +224,7 @@ def initdata():
             db.session.add(class_obj)
         
         db.session.commit()
-        print('✓ Created sample classes')
+        print('[OK] Created sample classes')
     
     # Create sample teacher records in Teacher table
     if not Teacher.query.first():
@@ -219,7 +246,7 @@ def initdata():
             db.session.add(teacher)
         
         db.session.commit()
-        print('✓ Created sample teacher records')
+        print('[OK] Created sample teacher records')
     
     # Create sample students
     if not Student.query.first():
@@ -252,14 +279,110 @@ def initdata():
             db.session.add(student)
         
         db.session.commit()
-        print('✓ Created sample student records')
+        print('[OK] Created sample student records')
     
-    print('\n🎉 Database seeding completed successfully!')
+    # Create sample subjects
+    if not Subject.query.first():
+        sample_subjects = [
+            {'name': 'English', 'code': 'ENG', 'description': 'English language and literature'},
+            {'name': 'Kiswahili', 'code': 'KIS', 'description': 'Kiswahili language and literature'},
+            {'name': 'Mathematics', 'code': 'MATH', 'description': 'Mathematics and algebra'},
+            {'name': 'Biology', 'code': 'BIO', 'description': 'Biological sciences'},
+            {'name': 'Chemistry', 'code': 'CHEM', 'description': 'Chemical sciences'},
+            {'name': 'Physics', 'code': 'PHY', 'description': 'Physical sciences'},
+            {'name': 'Geography', 'code': 'GEO', 'description': 'Geography and environmental studies'},
+            {'name': 'History', 'code': 'HIS', 'description': 'History and social studies'},
+            {'name': 'Christian Religious Education', 'code': 'CRE', 'description': 'Christian Religious Education'},
+            {'name': 'Islamic Religious Education', 'code': 'IRE', 'description': 'Islamic Religious Education'},
+            {'name': 'Hindu Religious Education', 'code': 'HRE', 'description': 'Hindu Religious Education'},
+            {'name': 'Agriculture', 'code': 'AGR', 'description': 'Agricultural studies'},
+            {'name': 'Business Studies', 'code': 'BUS', 'description': 'Business and commerce studies'},
+            {'name': 'Home Science', 'code': 'HSC', 'description': 'Home science and domestic studies'},
+        ]
+        
+        teacher_users_db = User.query.join(Role).filter(Role.name == 'Teacher').all()
+        
+        for idx, subject_data in enumerate(sample_subjects):
+            subject = Subject(
+                name=subject_data['name'],
+                code=subject_data['code'],
+                description=subject_data['description'],
+                created_by=teacher_users_db[0].id if teacher_users_db else None
+            )
+            db.session.add(subject)
+            db.session.flush()  # Get the subject ID
+            
+            # Distribute subjects across teachers
+            if teacher_users_db:
+                # Assign subjects to different teachers based on index
+                teacher_idx = idx % len(teacher_users_db)
+                teacher_users_db[teacher_idx].subjects.append(subject)
+        
+        db.session.commit()
+        print('[OK] Created subjects and assigned to teachers')
+    
+    print('\n[SUCCESS] Database seeding completed successfully!')
     print('\nSample login credentials:')
-    print('👨‍💼 Admin: admin@example.com / password123')
-    print('👨‍🏫 Teacher: michael.johnson@edutrack.com / teacher123')
-    print('👨‍🎓 Student: alice.smith@student.edu / student123')
-    print('👨‍👩‍👧‍👦 Parent: mary.smith@parent.com / parent123')
+    print('Admin: admin@example.com / password123')
+    print('Teacher: michael.johnson@edutrack.com / teacher123')
+    print('Student: alice.smith@student.edu / student123')
+    print('Parent: mary.smith@parent.com / parent123')
+
+@app.cli.command('add-subjects')
+def add_subjects():
+    """
+    Add subjects to the database (will skip if already exist).
+    Run in PowerShell: flask --app app.py add-subjects
+    """
+    sample_subjects = [
+        {'name': 'English', 'code': 'ENG', 'description': 'English language and literature'},
+        {'name': 'Kiswahili', 'code': 'KIS', 'description': 'Kiswahili language and literature'},
+        {'name': 'Mathematics', 'code': 'MATH', 'description': 'Mathematics and algebra'},
+        {'name': 'Biology', 'code': 'BIO', 'description': 'Biological sciences'},
+        {'name': 'Chemistry', 'code': 'CHEM', 'description': 'Chemical sciences'},
+        {'name': 'Physics', 'code': 'PHY', 'description': 'Physical sciences'},
+        {'name': 'Geography', 'code': 'GEO', 'description': 'Geography and environmental studies'},
+        {'name': 'History', 'code': 'HIS', 'description': 'History and social studies'},
+        {'name': 'Christian Religious Education', 'code': 'CRE', 'description': 'Christian Religious Education'},
+        {'name': 'Islamic Religious Education', 'code': 'IRE', 'description': 'Islamic Religious Education'},
+        {'name': 'Hindu Religious Education', 'code': 'HRE', 'description': 'Hindu Religious Education'},
+        {'name': 'Agriculture', 'code': 'AGR', 'description': 'Agricultural studies'},
+        {'name': 'Business Studies', 'code': 'BUS', 'description': 'Business and commerce studies'},
+        {'name': 'Home Science', 'code': 'HSC', 'description': 'Home science and domestic studies'},
+    ]
+    
+    teacher_users_db = User.query.join(Role).filter(Role.name == 'Teacher').all()
+    added_count = 0
+    
+    for idx, subject_data in enumerate(sample_subjects):
+        # Check if subject with this name or code already exists
+        existing = Subject.query.filter(
+            (Subject.name == subject_data['name']) | (Subject.code == subject_data['code'])
+        ).first()
+        
+        if not existing:
+            subject = Subject(
+                name=subject_data['name'],
+                code=subject_data['code'],
+                description=subject_data['description'],
+                created_by=teacher_users_db[0].id if teacher_users_db else None
+            )
+            db.session.add(subject)
+            db.session.flush()  # Get the subject ID
+            
+            # Distribute subjects across teachers
+            if teacher_users_db:
+                teacher_idx = idx % len(teacher_users_db)
+                teacher_users_db[teacher_idx].subjects.append(subject)
+            
+            added_count += 1
+        else:
+            print(f'Skipped {subject_data["name"]} - already exists')
+    
+    db.session.commit()
+    print(f'[OK] Added {added_count} new subjects')
+    if added_count > 0:
+        print('[OK] Subjects assigned to teachers')
 # app.py (part 4) - auth and main pages
 @app.route('/')
 def home():
@@ -482,6 +605,167 @@ def api_classes():
     db.session.add(c)
     db.session.commit()
     return jsonify({"id": c.id, "name": c.name}), 201
+
+# ==============================
+#   TEACHER: Subject Management
+# ==============================
+@app.route('/subjects')
+@login_required
+def subjects():
+    # Only teachers and admins can access subjects
+    if current_user.role.name not in ['Admin', 'Teacher']:
+        flash("Access denied: Teachers and Admins only.")
+        return redirect(url_for('dashboard'))
+    
+    subjects = Subject.query.all()
+    # Get subjects assigned to current teacher if they're a teacher
+    if current_user.role.name == 'Teacher':
+        my_subjects = current_user.subjects.all()
+    else:
+        my_subjects = []
+    
+    return render_template('subjects.html', subjects=subjects, my_subjects=my_subjects)
+
+@app.route('/subject/add', methods=['GET', 'POST'])
+@login_required
+def add_subject():
+    # Only teachers and admins can add subjects
+    if current_user.role.name not in ['Admin', 'Teacher']:
+        flash("Access denied: Teachers and Admins only.")
+        return redirect(url_for('subjects'))
+
+    if request.method == 'POST':
+        name = request.form.get('name')
+        code = request.form.get('code')
+        description = request.form.get('description', '')
+        
+        # Check if subject with same name or code already exists
+        if Subject.query.filter_by(name=name).first():
+            flash('Subject with this name already exists!', 'danger')
+            return render_template('add_subject.html')
+        
+        if Subject.query.filter_by(code=code).first():
+            flash('Subject with this code already exists!', 'danger')
+            return render_template('add_subject.html')
+        
+        subject = Subject(
+            name=name,
+            code=code,
+            description=description,
+            created_by=current_user.id
+        )
+        db.session.add(subject)
+        db.session.commit()
+        
+        # Automatically assign the subject to the teacher who created it
+        if current_user.role.name == 'Teacher':
+            current_user.subjects.append(subject)
+            db.session.commit()
+        
+        flash('Subject added successfully!', 'success')
+        return redirect(url_for('subjects'))
+
+    return render_template('add_subject.html')
+
+@app.route('/subject/edit/<int:id>', methods=['GET', 'POST'])
+@login_required
+def edit_subject(id):
+    # Only teachers and admins can edit subjects
+    if current_user.role.name not in ['Admin', 'Teacher']:
+        flash("Access denied: Teachers and Admins only.")
+        return redirect(url_for('subjects'))
+
+    subject = Subject.query.get_or_404(id)
+    
+    # Teachers can only edit subjects they created or are assigned to
+    if current_user.role.name == 'Teacher':
+        if subject.created_by != current_user.id and subject not in current_user.subjects.all():
+            flash("Access denied: You can only edit your own subjects.", 'danger')
+            return redirect(url_for('subjects'))
+
+    if request.method == 'POST':
+        name = request.form.get('name')
+        code = request.form.get('code')
+        description = request.form.get('description', '')
+        
+        # Check if another subject with same name or code exists
+        existing_name = Subject.query.filter_by(name=name).first()
+        if existing_name and existing_name.id != id:
+            flash('Subject with this name already exists!', 'danger')
+            return render_template('edit_subject.html', subject=subject)
+        
+        existing_code = Subject.query.filter_by(code=code).first()
+        if existing_code and existing_code.id != id:
+            flash('Subject with this code already exists!', 'danger')
+            return render_template('edit_subject.html', subject=subject)
+        
+        subject.name = name
+        subject.code = code
+        subject.description = description
+        db.session.commit()
+        flash('Subject updated successfully!', 'success')
+        return redirect(url_for('subjects'))
+
+    return render_template('edit_subject.html', subject=subject)
+
+@app.route('/subject/delete/<int:id>', methods=['POST'])
+@login_required
+def delete_subject(id):
+    # Only teachers and admins can delete subjects
+    if current_user.role.name not in ['Admin', 'Teacher']:
+        flash("Access denied: Teachers and Admins only.")
+        return redirect(url_for('subjects'))
+
+    subject = Subject.query.get_or_404(id)
+    
+    # Teachers can only delete subjects they created
+    if current_user.role.name == 'Teacher':
+        if subject.created_by != current_user.id:
+            flash("Access denied: You can only delete your own subjects.", 'danger')
+            return redirect(url_for('subjects'))
+    
+    db.session.delete(subject)
+    db.session.commit()
+    flash('Subject deleted successfully!', 'success')
+    return redirect(url_for('subjects'))
+
+@app.route('/subject/<int:id>/assign', methods=['POST'])
+@login_required
+def assign_subject(id):
+    # Only teachers can assign subjects to themselves
+    if current_user.role.name != 'Teacher':
+        flash("Access denied: Teachers only.")
+        return redirect(url_for('subjects'))
+    
+    subject = Subject.query.get_or_404(id)
+    
+    if subject in current_user.subjects.all():
+        flash('You are already assigned to this subject!', 'info')
+    else:
+        current_user.subjects.append(subject)
+        db.session.commit()
+        flash(f'Successfully assigned to {subject.name}!', 'success')
+    
+    return redirect(url_for('subjects'))
+
+@app.route('/subject/<int:id>/unassign', methods=['POST'])
+@login_required
+def unassign_subject(id):
+    # Only teachers can unassign subjects from themselves
+    if current_user.role.name != 'Teacher':
+        flash("Access denied: Teachers only.")
+        return redirect(url_for('subjects'))
+    
+    subject = Subject.query.get_or_404(id)
+    
+    if subject not in current_user.subjects.all():
+        flash('You are not assigned to this subject!', 'info')
+    else:
+        current_user.subjects.remove(subject)
+        db.session.commit()
+        flash(f'Successfully unassigned from {subject.name}!', 'success')
+    
+    return redirect(url_for('subjects'))
 
 # app.py (part 6) - run
 if __name__ == '__main__':

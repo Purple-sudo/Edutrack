@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">
+        <h4>Edit Subject</h4>
+      </div>
+      <div class="card-body">
+        <form method="POST">
+          <div class="mb-3">
+            <label for="name" class="form-label">Subject Name</label>
+            <input type="text" class="form-control" id="name" name="name" value="{{ subject.name }}" required>
+          </div>
+          
+          <div class="mb-3">
+            <label for="code" class="form-label">Subject Code</label>
+            <input type="text" class="form-control" id="code" name="code" value="{{ subject.code }}" required maxlength="20">
+            <small class="form-text text-muted">Unique code for this subject</small>
+          </div>
+          
+          <div class="mb-3">
+            <label for="description" class="form-label">Description</label>
+            <textarea class="form-control" id="description" name="description" rows="3">{{ subject.description or '' }}</textarea>
+          </div>
+          
+          <div class="d-flex justify-content-between">
+            <a href="{{ url_for('subjects') }}" class="btn btn-secondary">Cancel</a>
+            <button type="submit" class="btn btn-primary">Update Subject</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
