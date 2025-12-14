@@ -1,0 +1,94 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-8">
+    <div class="card">
+      <div class="card-header">
+        <h4>Add New Grade</h4>
+      </div>
+      <div class="card-body">
+        <form method="POST">
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label for="student_id" class="form-label">Student <span class="text-danger">*</span></label>
+              <select class="form-select" id="student_id" name="student_id" required>
+                <option value="">Select a student</option>
+                {% for student in students %}
+                <option value="{{ student.id }}">{{ student.name }} ({{ student.admission_no }})</option>
+                {% endfor %}
+              </select>
+            </div>
+            
+            <div class="col-md-6 mb-3">
+              <label for="subject_id" class="form-label">Subject <span class="text-danger">*</span></label>
+              <select class="form-select" id="subject_id" name="subject_id" required>
+                <option value="">Select a subject</option>
+                {% for subject in subjects %}
+                <option value="{{ subject.id }}">{{ subject.code }} - {{ subject.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          
+          <div class="row">
+            <div class="col-md-4 mb-3">
+              <label for="grade_value" class="form-label">Grade Value <span class="text-danger">*</span></label>
+              <input type="number" step="0.1" class="form-control" id="grade_value" name="grade_value" required placeholder="e.g., 85.5">
+            </div>
+            
+            <div class="col-md-4 mb-3">
+              <label for="max_grade" class="form-label">Maximum Grade</label>
+              <input type="number" step="0.1" class="form-control" id="max_grade" name="max_grade" value="100" placeholder="e.g., 100">
+            </div>
+            
+            <div class="col-md-4 mb-3">
+              <label for="grade_type" class="form-label">Grade Type <span class="text-danger">*</span></label>
+              <select class="form-select" id="grade_type" name="grade_type" required>
+                <option value="">Select type</option>
+                <option value="Exam">Exam</option>
+                <option value="Test">Test</option>
+                <option value="Quiz">Quiz</option>
+                <option value="Assignment">Assignment</option>
+                <option value="Project">Project</option>
+                <option value="Participation">Participation</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label for="date_given" class="form-label">Date Given <span class="text-danger">*</span></label>
+              <input type="date" class="form-control" id="date_given" name="date_given" required>
+            </div>
+            
+            {% if current_user.role.name == 'Admin' %}
+            <div class="col-md-6 mb-3">
+              <label for="teacher_id" class="form-label">Teacher</label>
+              <select class="form-select" id="teacher_id" name="teacher_id">
+                <option value="">Select a teacher</option>
+                {% for teacher in teachers %}
+                <option value="{{ teacher.id }}">{{ teacher.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            {% endif %}
+          </div>
+          
+          <div class="mb-3">
+            <label for="description" class="form-label">Description</label>
+            <textarea class="form-control" id="description" name="description" rows="2" placeholder="Optional description or notes about this grade"></textarea>
+          </div>
+          
+          <div class="d-flex justify-content-between">
+            <a href="{{ url_for('grades') }}" class="btn btn-secondary">Cancel</a>
+            <button type="submit" class="btn btn-primary">Add Grade</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+

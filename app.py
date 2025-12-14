@@ -36,6 +36,12 @@ class Class(db.Model):
     name = db.Column(db.String(100))
     teacher_id = db.Column(db.Integer, db.ForeignKey('user.id'))
 
+# Association table for many-to-many relationship between parents and students
+parent_student = db.Table('parent_student',
+    db.Column('parent_id', db.Integer, db.ForeignKey('user.id'), primary_key=True),
+    db.Column('student_id', db.Integer, db.ForeignKey('student.id'), primary_key=True)
+)
+
 class Student(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     admission_no = db.Column(db.String(50))
@@ -44,6 +50,8 @@ class Student(db.Model):
     dob = db.Column(db.Date, nullable=True)
     gender = db.Column(db.String(10))
     class_rel = db.relationship('Class', backref='students')
+    # Many-to-many relationship with parents
+    parents = db.relationship('User', secondary=parent_student, backref=db.backref('children', lazy='dynamic'))
 
     def to_dict(self):
         return {
@@ -102,6 +110,43 @@ class Subject(db.Model):
             'teacher_count': len(self.teachers) if self.teachers else 0
         }
 
+class Grade(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('student.id'), nullable=False)
+    subject_id = db.Column(db.Integer, db.ForeignKey('subject.id'), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    grade_value = db.Column(db.Float, nullable=False)  # e.g., 85.5
+    max_grade = db.Column(db.Float, default=100.0)  # e.g., 100
+    grade_type = db.Column(db.String(50), nullable=False)  # e.g., 'Exam', 'Assignment', 'Quiz', 'Test'
+    description = db.Column(db.String(200), nullable=True)
+    date_given = db.Column(db.Date, nullable=False, default=datetime.utcnow().date)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    student = db.relationship('Student', backref='grades')
+    subject = db.relationship('Subject', backref='grades')
+    teacher = db.relationship('User', backref='grades_given')
+    
+    def to_dict(self):
+        percentage = (self.grade_value / self.max_grade * 100) if self.max_grade > 0 else 0
+        return {
+            'id': self.id,
+            'student_id': self.student_id,
+            'student_name': self.student.name if self.student else None,
+            'subject_id': self.subject_id,
+            'subject_name': self.subject.name if self.subject else None,
+            'subject_code': self.subject.code if self.subject else None,
+            'teacher_id': self.teacher_id,
+            'teacher_name': self.teacher.name if self.teacher else None,
+            'grade_value': self.grade_value,
+            'max_grade': self.max_grade,
+            'percentage': round(percentage, 2),
+            'grade_type': self.grade_type,
+            'description': self.description,
+            'date_given': self.date_given.strftime("%Y-%m-%d") if self.date_given else None,
+            'created_at': self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None
+        }
+
 # app.py (part 3) - login loader & seed command
 @login_manager.user_loader
 def load_user(user_id):
@@ -144,8 +189,8 @@ def initdata():
                 name=admin_data['name'],
                 email=admin_data['email'],
                 password_hash=generate_password_hash(admin_data['password']),
-            role=admin_role
-        )
+                role=admin_role
+            )
             db.session.add(user)
     
     # Create sample teacher users
@@ -281,6 +326,32 @@ def initdata():
         db.session.commit()
         print('[OK] Created sample student records')
     
+    # Link parents to students (match by last name)
+    parent_users_db = User.query.join(Role).filter(Role.name == 'Parent').all()
+    students_db = Student.query.all()
+    
+    if parent_users_db and students_db:
+        # Create a mapping of last names to link parents and students
+        parent_student_links = {
+            'Smith': ['Alice Smith'],
+            'Johnson': ['Bob Johnson'],
+            'Williams': ['Carol Williams'],
+            'Brown': ['Daniel Brown'],
+            'Garcia': ['Eva Garcia']
+        }
+        
+        for parent in parent_users_db:
+            parent_last_name = parent.name.split()[-1] if parent.name else ''
+            if parent_last_name in parent_student_links:
+                # Find students with matching last names
+                for student in students_db:
+                    if student.name in parent_student_links[parent_last_name]:
+                        if student not in parent.children.all():
+                            parent.children.append(student)
+        
+        db.session.commit()
+        print('[OK] Linked parents to students')
+    
     # Create sample subjects
     if not Subject.query.first():
         sample_subjects = [
@@ -320,6 +391,53 @@ def initdata():
         
         db.session.commit()
         print('[OK] Created subjects and assigned to teachers')
+    
+    # Create sample grades
+    if not Grade.query.first():
+        students = Student.query.all()
+        subjects = Subject.query.all()
+        teachers = User.query.join(Role).filter(Role.name == 'Teacher').all()
+        
+        if students and subjects and teachers:
+            from datetime import timedelta
+            
+            # Create sample grades for first few students
+            grade_types = ['Exam', 'Test', 'Quiz', 'Assignment', 'Project']
+            sample_grades = []
+            
+            for student_idx, student in enumerate(students[:5]):  # First 5 students
+                for subject in subjects[:5]:  # First 5 subjects
+                    # Assign 2-3 grades per subject per student
+                    for grade_num in range(2):
+                        grade_type = grade_types[grade_num % len(grade_types)]
+                        teacher = teachers[student_idx % len(teachers)]
+                        
+                        # Vary grades between 60-95
+                        grade_value = 60 + (student_idx * 5) + (grade_num * 10) + (hash(subject.code) % 15)
+                        if grade_value > 95:
+                            grade_value = 95
+                        if grade_value < 60:
+                            grade_value = 60
+                        
+                        date_given = date.today() - timedelta(days=30 - (grade_num * 10))
+                        
+                        grade = Grade(
+                            student_id=student.id,
+                            subject_id=subject.id,
+                            teacher_id=teacher.id,
+                            grade_value=float(grade_value),
+                            max_grade=100.0,
+                            grade_type=grade_type,
+                            description=f'{grade_type} in {subject.name}',
+                            date_given=date_given
+                        )
+                        sample_grades.append(grade)
+            
+            for grade in sample_grades:
+                db.session.add(grade)
+            
+            db.session.commit()
+            print('[OK] Created sample grades')
     
     print('\n[SUCCESS] Database seeding completed successfully!')
     print('\nSample login credentials:')
@@ -766,6 +884,180 @@ def unassign_subject(id):
         flash(f'Successfully unassigned from {subject.name}!', 'success')
     
     return redirect(url_for('subjects'))
+
+# ==============================
+#   GRADES: Grade Management
+# ==============================
+@app.route('/grades')
+@login_required
+def grades():
+    # Teachers, Students, and Parents can access grades
+    if current_user.role.name not in ['Admin', 'Teacher', 'Student', 'Parent']:
+        flash("Access denied.")
+        return redirect(url_for('dashboard'))
+    
+    # Get grades based on role
+    if current_user.role.name == 'Teacher':
+        # Teachers see all grades they've given
+        grades = Grade.query.filter_by(teacher_id=current_user.id).order_by(Grade.date_given.desc()).all()
+    elif current_user.role.name == 'Student':
+        # Students see only their own grades
+        # Find student record by matching email or name
+        student = Student.query.filter_by(name=current_user.name).first()
+        if student:
+            grades = Grade.query.filter_by(student_id=student.id).order_by(Grade.date_given.desc()).all()
+        else:
+            grades = []
+    elif current_user.role.name == 'Parent':
+        # Parents see their children's grades
+        children = current_user.children.all()
+        if children:
+            student_ids = [child.id for child in children]
+            grades = Grade.query.filter(Grade.student_id.in_(student_ids)).order_by(Grade.date_given.desc()).all()
+        else:
+            grades = []
+    else:  # Admin
+        grades = Grade.query.order_by(Grade.date_given.desc()).all()
+    
+    # Get all students and subjects for filters
+    students = Student.query.all()
+    subjects = Subject.query.all()
+    
+    return render_template('grades.html', grades=grades, students=students, subjects=subjects)
+
+@app.route('/grade/add', methods=['GET', 'POST'])
+@login_required
+def add_grade():
+    # Only teachers and admins can add grades
+    if current_user.role.name not in ['Admin', 'Teacher']:
+        flash("Access denied: Teachers and Admins only.")
+        return redirect(url_for('grades'))
+    
+    if request.method == 'POST':
+        student_id = request.form.get('student_id')
+        subject_id = request.form.get('subject_id')
+        grade_value = float(request.form.get('grade_value'))
+        max_grade = float(request.form.get('max_grade', 100))
+        grade_type = request.form.get('grade_type')
+        description = request.form.get('description', '')
+        date_given_str = request.form.get('date_given')
+        
+        # Parse date
+        date_given = datetime.strptime(date_given_str, "%Y-%m-%d").date() if date_given_str else datetime.utcnow().date()
+        
+        # Use current user as teacher if they're a teacher
+        teacher_id = current_user.id if current_user.role.name == 'Teacher' else request.form.get('teacher_id', current_user.id)
+        
+        grade = Grade(
+            student_id=student_id,
+            subject_id=subject_id,
+            teacher_id=teacher_id,
+            grade_value=grade_value,
+            max_grade=max_grade,
+            grade_type=grade_type,
+            description=description,
+            date_given=date_given
+        )
+        
+        db.session.add(grade)
+        db.session.commit()
+        flash('Grade added successfully!', 'success')
+        return redirect(url_for('grades'))
+    
+    # Get students and subjects for the form
+    students = Student.query.all()
+    subjects = Subject.query.all()
+    teachers = User.query.join(Role).filter(Role.name == 'Teacher').all()
+    
+    return render_template('add_grade.html', students=students, subjects=subjects, teachers=teachers)
+
+@app.route('/grade/edit/<int:id>', methods=['GET', 'POST'])
+@login_required
+def edit_grade(id):
+    # Only teachers and admins can edit grades
+    if current_user.role.name not in ['Admin', 'Teacher']:
+        flash("Access denied: Teachers and Admins only.")
+        return redirect(url_for('grades'))
+    
+    grade = Grade.query.get_or_404(id)
+    
+    # Teachers can only edit their own grades
+    if current_user.role.name == 'Teacher' and grade.teacher_id != current_user.id:
+        flash("Access denied: You can only edit your own grades.", 'danger')
+        return redirect(url_for('grades'))
+    
+    if request.method == 'POST':
+        grade.student_id = request.form.get('student_id')
+        grade.subject_id = request.form.get('subject_id')
+        grade.grade_value = float(request.form.get('grade_value'))
+        grade.max_grade = float(request.form.get('max_grade', 100))
+        grade.grade_type = request.form.get('grade_type')
+        grade.description = request.form.get('description', '')
+        date_given_str = request.form.get('date_given')
+        
+        if date_given_str:
+            grade.date_given = datetime.strptime(date_given_str, "%Y-%m-%d").date()
+        
+        if current_user.role.name == 'Admin':
+            grade.teacher_id = request.form.get('teacher_id', grade.teacher_id)
+        
+        db.session.commit()
+        flash('Grade updated successfully!', 'success')
+        return redirect(url_for('grades'))
+    
+    students = Student.query.all()
+    subjects = Subject.query.all()
+    teachers = User.query.join(Role).filter(Role.name == 'Teacher').all()
+    
+    return render_template('edit_grade.html', grade=grade, students=students, subjects=subjects, teachers=teachers)
+
+@app.route('/grade/delete/<int:id>', methods=['POST'])
+@login_required
+def delete_grade(id):
+    # Only teachers and admins can delete grades
+    if current_user.role.name not in ['Admin', 'Teacher']:
+        flash("Access denied: Teachers and Admins only.")
+        return redirect(url_for('grades'))
+    
+    grade = Grade.query.get_or_404(id)
+    
+    # Teachers can only delete their own grades
+    if current_user.role.name == 'Teacher' and grade.teacher_id != current_user.id:
+        flash("Access denied: You can only delete your own grades.", 'danger')
+        return redirect(url_for('grades'))
+    
+    db.session.delete(grade)
+    db.session.commit()
+    flash('Grade deleted successfully!', 'success')
+    return redirect(url_for('grades'))
+
+@app.route('/api/grades', methods=['GET'])
+@login_required
+def api_grades():
+    # Teachers, Students, and Parents can access grades API
+    if current_user.role.name not in ['Admin', 'Teacher', 'Student', 'Parent']:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    # Get grades based on role
+    if current_user.role.name == 'Teacher':
+        grades = Grade.query.filter_by(teacher_id=current_user.id).all()
+    elif current_user.role.name == 'Student':
+        student = Student.query.filter_by(name=current_user.name).first()
+        if student:
+            grades = Grade.query.filter_by(student_id=student.id).all()
+        else:
+            grades = []
+    elif current_user.role.name == 'Parent':
+        children = current_user.children.all()
+        if children:
+            student_ids = [child.id for child in children]
+            grades = Grade.query.filter(Grade.student_id.in_(student_ids)).all()
+        else:
+            grades = []
+    else:  # Admin
+        grades = Grade.query.all()
+    
+    return jsonify([g.to_dict() for g in grades])
 
 # app.py (part 6) - run
 if __name__ == '__main__':

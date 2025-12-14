@@ -20,6 +20,9 @@
               {% if current_user.role.name in ['Admin', 'Teacher'] %}
                 <li class="nav-item"><a class="nav-link" href="{{ url_for('subjects') }}">Subjects</a></li>
               {% endif %}
+              {% if current_user.role.name in ['Admin', 'Teacher', 'Student', 'Parent'] %}
+                <li class="nav-item"><a class="nav-link" href="{{ url_for('grades') }}">Grades</a></li>
+              {% endif %}
               {% if current_user.role.name == 'Admin' %}
                 <li class="nav-item"><a class="nav-link" href="{{ url_for('teachers') }}">Teachers</a></li>
               {% endif %}
