@@ -722,10 +722,20 @@ def api_students():
        except ValueError:
             dob_parsed = None #fallback if format is wrong
 
+    # Handle class_id - convert empty string to None and string numbers to int
+    class_id_value = data.get('class_id')
+    if class_id_value == '' or class_id_value is None:
+        class_id_value = None
+    else:
+        try:
+            class_id_value = int(class_id_value)
+        except (ValueError, TypeError):
+            class_id_value = None
+
     s = Student(
         admission_no = data.get('admission_no'),
         name = data.get('name'),
-        class_id = data.get('class_id'),
+        class_id = class_id_value,
         dob = dob_parsed,
         gender = data.get('gender')
     )
@@ -753,9 +763,19 @@ def update_student(id):
     student = Student.query.get_or_404(id)
     data = request.json
 
+    # Handle class_id - convert empty string to None and string numbers to int
+    class_id_value = data.get('class_id')
+    if class_id_value == '' or class_id_value is None:
+        class_id_value = None
+    else:
+        try:
+            class_id_value = int(class_id_value)
+        except (ValueError, TypeError):
+            class_id_value = student.class_id  # Keep existing if conversion fails
+
     student.admission_no = data.get('admission_no', student.admission_no)
     student.name = data.get('name', student.name)
-    student.class_id = data.get('class_id', student.class_id)
+    student.class_id = class_id_value
     student.gender = data.get('gender', student.gender)
 
     dob_value = data.get('dob')
