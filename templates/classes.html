@@ -7,9 +7,15 @@
 </div>
 
 <table class="table table-striped" id="classesTable">
-  <thead><tr><th>ID</th><th>Name</th></tr></thead>
-  <tbody></tbody>
-</table>
+  <thead><tr><th>ID</th><th>Name</th><th>Actions</th></tr></thead>
+      <tbody>
+        <tr>
+          <td colspan="2">
+            <small>Note: Click on a class to manage it (assign students, assign teacher)</small>
+          </td>
+        </tr>
+      </tbody>
+    </table>
 
 <!-- Add class modal -->
 <div class="modal fade" id="addClassModal" tabindex="-1">
@@ -44,7 +50,9 @@ async function loadClasses(){
 
   data.forEach(c=>{
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${c.id}</td><td>${c.name}</td>`;
+    const manageBtn = `<a href="/class/${c.id}/manage" class="btn btn-sm btn-primary">Manage</a>`;
+    tr.innerHTML = `<td>${c.id}</td><td>${c.name}</td><td>${manageBtn}</td>`;
+    tr.style.cursor = 'pointer';
     tbody.appendChild(tr);
   });
 

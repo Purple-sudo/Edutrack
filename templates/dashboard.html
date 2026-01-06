@@ -1,61 +1,374 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<h3>Dashboard - Welcome {{ current_user.name }} ({{ user_role }})</h3>
-<div class="row">
-  <div class="col-md-3">
+<h3>Dashboard - Welcome {{ current_user.name }} <span class="badge bg-primary">{{ user_role }}</span></h3>
+
+{% if user_role == 'Admin' %}
+<!-- Admin Dashboard -->
+<div class="row mb-4">
+  <div class="col-md-2">
     <div class="card p-3 text-center shadow-sm">
-      <div>Total Students</div>
-      <h2>{{ total_students }}</h2>
+      <div class="text-muted small">Students</div>
+      <h2 class="mb-0">{{ total_students }}</h2>
     </div>
   </div>
-  <div class="col-md-3">
+  <div class="col-md-2">
     <div class="card p-3 text-center shadow-sm">
-      <div>Total Classes</div>
-      <h2>{{ total_classes }}</h2>
+      <div class="text-muted small">Classes</div>
+      <h2 class="mb-0">{{ total_classes }}</h2>
     </div>
   </div>
-  {% if user_role == 'Admin' %}
-  <div class="col-md-3">
+  <div class="col-md-2">
     <div class="card p-3 text-center shadow-sm">
-      <div>Total Teachers</div>
-      <h2>{{ total_teachers }}</h2>
+      <div class="text-muted small">Teachers</div>
+      <h2 class="mb-0">{{ total_teachers }}</h2>
     </div>
   </div>
-  {% endif %}
+  <div class="col-md-2">
+    <div class="card p-3 text-center shadow-sm">
+      <div class="text-muted small">Subjects</div>
+      <h2 class="mb-0">{{ total_subjects }}</h2>
+    </div>
+  </div>
+  <div class="col-md-2">
+    <div class="card p-3 text-center shadow-sm">
+      <div class="text-muted small">Grades</div>
+      <h2 class="mb-0">{{ total_grades }}</h2>
+    </div>
+  </div>
+  <div class="col-md-2">
+    <div class="card p-3 text-center shadow-sm">
+      <div class="text-muted small">Parents</div>
+      <h2 class="mb-0">{{ total_parents }}</h2>
+    </div>
+  </div>
 </div>
 
-<div class="row mt-4">
-  <div class="col-12">
+<div class="row">
+  <div class="col-md-12">
     <div class="card">
       <div class="card-header">
         <h5>Quick Actions</h5>
       </div>
       <div class="card-body">
         <div class="row">
-          <div class="col-md-3">
+          <div class="col-md-2">
             <a href="{{ url_for('students_page') }}" class="btn btn-primary btn-lg w-100 mb-2">
               <i class="fas fa-users"></i><br>
-              Manage Students
+              <small>Students</small>
             </a>
           </div>
-          <div class="col-md-3">
+          <div class="col-md-2">
             <a href="{{ url_for('classes_page') }}" class="btn btn-info btn-lg w-100 mb-2">
               <i class="fas fa-chalkboard"></i><br>
-              Manage Classes
+              <small>Classes</small>
             </a>
           </div>
-          {% if user_role == 'Admin' %}
-          <div class="col-md-3">
+          <div class="col-md-2">
             <a href="{{ url_for('teachers') }}" class="btn btn-success btn-lg w-100 mb-2">
               <i class="fas fa-chalkboard-teacher"></i><br>
-              Manage Teachers
+              <small>Teachers</small>
             </a>
           </div>
-          {% endif %}
+          <div class="col-md-2">
+            <a href="{{ url_for('subjects') }}" class="btn btn-warning btn-lg w-100 mb-2">
+              <i class="fas fa-book"></i><br>
+              <small>Subjects</small>
+            </a>
+          </div>
+          <div class="col-md-2">
+            <a href="{{ url_for('grades') }}" class="btn btn-danger btn-lg w-100 mb-2">
+              <i class="fas fa-graduation-cap"></i><br>
+              <small>Grades</small>
+            </a>
+          </div>
+          <div class="col-md-2">
+            <a href="{{ url_for('parent_student_links') }}" class="btn btn-secondary btn-lg w-100 mb-2">
+              <i class="fas fa-link"></i><br>
+              <small>Parent Links</small>
+            </a>
+          </div>
         </div>
       </div>
     </div>
   </div>
 </div>
+
+{% elif user_role == 'Teacher' %}
+<!-- Teacher Dashboard -->
+<div class="row mb-4">
+  <div class="col-md-3">
+    <div class="card p-3 text-center shadow-sm">
+      <div class="text-muted small">My Classes</div>
+      <h2 class="mb-0">{{ my_classes|length }}</h2>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card p-3 text-center shadow-sm">
+      <div class="text-muted small">My Subjects</div>
+      <h2 class="mb-0">{{ my_subjects|length }}</h2>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card p-3 text-center shadow-sm">
+      <div class="text-muted small">Grades Given</div>
+      <h2 class="mb-0">{{ total_grades }}</h2>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card p-3 text-center shadow-sm bg-primary text-white">
+      <div>Quick Access</div>
+      <a href="{{ url_for('add_grade') }}" class="btn btn-light btn-sm mt-2">Add Grade</a>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">
+        <h5>My Classes</h5>
+      </div>
+      <div class="card-body">
+        {% if my_classes %}
+        <ul class="list-group">
+          {% for class_obj in my_classes %}
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            {{ class_obj.name }}
+            <span class="badge bg-info">{{ class_obj.students|length }} students</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-muted">No classes assigned yet.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">
+        <h5>My Subjects</h5>
+      </div>
+      <div class="card-body">
+        {% if my_subjects %}
+        <ul class="list-group">
+          {% for subject in my_subjects %}
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            {{ subject.code }} - {{ subject.name }}
+            <a href="{{ url_for('subjects') }}" class="btn btn-sm btn-outline-primary">View</a>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-muted">No subjects assigned. <a href="{{ url_for('subjects') }}">Assign subjects</a></p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row mt-4">
+  <div class="col-md-12">
+    <div class="card">
+      <div class="card-header">
+        <h5>Recent Grades Given</h5>
+      </div>
+      <div class="card-body">
+        {% if recent_grades %}
+        <div class="table-responsive">
+          <table class="table table-sm">
+            <thead>
+              <tr>
+                <th>Student</th>
+                <th>Subject</th>
+                <th>Grade</th>
+                <th>Type</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for grade in recent_grades %}
+              <tr>
+                <td>{{ grade.student.name if grade.student else 'N/A' }}</td>
+                <td>{{ grade.subject.code if grade.subject else 'N/A' }}</td>
+                <td><strong>{{ grade.grade_value }}/{{ grade.max_grade }}</strong></td>
+                <td><span class="badge bg-secondary">{{ grade.grade_type }}</span></td>
+                <td>{{ grade.date_given.strftime('%Y-%m-%d') if grade.date_given else '-' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="text-muted">No grades given yet. <a href="{{ url_for('add_grade') }}">Add your first grade</a></p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% elif user_role == 'Student' %}
+<!-- Student Dashboard -->
+{% if student %}
+<div class="row mb-4">
+  <div class="col-md-4">
+    <div class="card p-3 text-center shadow-sm">
+      <div class="text-muted small">My Class</div>
+      <h4 class="mb-0">{{ student.class_rel.name if student.class_rel else 'Not Assigned' }}</h4>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card p-3 text-center shadow-sm bg-primary text-white">
+      <div>Overall Performance</div>
+      <h2 class="mb-0">{{ "%.1f"|format(overall_mean) }}%</h2>
+      {% if overall_grade_letter %}
+      <span class="badge bg-light text-dark">{{ overall_grade_letter }}</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card p-3 text-center shadow-sm">
+      <div class="text-muted small">Total Grades</div>
+      <h2 class="mb-0">{{ grade_count }}</h2>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">
+        <h5>Subject Performance</h5>
+      </div>
+      <div class="card-body">
+        {% if subject_grades %}
+        <div class="table-responsive">
+          <table class="table table-sm">
+            <thead>
+              <tr>
+                <th>Subject</th>
+                <th>Average</th>
+                <th>Grade</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for subject, percentages in subject_grades.items() %}
+                {% set avg = (percentages | sum / percentages | length) if percentages | length > 0 else 0 %}
+                {% set letter, desc = get_grade_letter(avg) if get_grade_letter else (None, None) %}
+              <tr>
+                <td>{{ subject }}</td>
+                <td><strong>{{ "%.1f"|format(avg) }}%</strong></td>
+                <td>
+                  {% if letter %}
+                  <span class="badge bg-primary">{{ letter }}</span>
+                  {% else %}
+                  <span class="text-muted">-</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="text-muted">No grades yet.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">
+        <h5>Recent Grades</h5>
+      </div>
+      <div class="card-body">
+        {% if recent_grades %}
+        <div class="table-responsive">
+          <table class="table table-sm">
+            <thead>
+              <tr>
+                <th>Subject</th>
+                <th>Grade</th>
+                <th>Type</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for grade in recent_grades %}
+              <tr>
+                <td>{{ grade.subject.code if grade.subject else 'N/A' }}</td>
+                <td><strong>{{ grade.grade_value }}/{{ grade.max_grade }}</strong></td>
+                <td><span class="badge bg-secondary">{{ grade.grade_type }}</span></td>
+                <td>{{ grade.date_given.strftime('%Y-%m-%d') if grade.date_given else '-' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <a href="{{ url_for('grades') }}" class="btn btn-primary btn-sm mt-2">View All Grades</a>
+        {% else %}
+        <p class="text-muted">No grades recorded yet.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-warning">
+  <h5>Student Record Not Found</h5>
+  <p>Your account is not linked to a student record. Please contact an administrator.</p>
+</div>
+{% endif %}
+
+{% elif user_role == 'Parent' %}
+<!-- Parent Dashboard -->
+<div class="row mb-4">
+  <div class="col-md-12">
+    <div class="card p-3 text-center shadow-sm bg-primary text-white">
+      <h4>My Children ({{ total_children }})</h4>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  {% if children %}
+    {% for child_info in children %}
+    <div class="col-md-6 mb-4">
+      <div class="card shadow-sm">
+        <div class="card-header bg-light">
+          <h5 class="mb-0">{{ child_info.student.name }} <small class="text-muted">({{ child_info.student.admission_no }})</small></h5>
+        </div>
+        <div class="card-body">
+          <div class="row">
+            <div class="col-md-6">
+              <p><strong>Class:</strong> {{ child_info.student.class_rel.name if child_info.student.class_rel else 'Not Assigned' }}</p>
+            </div>
+            <div class="col-md-6 text-end">
+              <div class="d-inline-block text-center">
+                <h3 class="mb-0">{{ "%.1f"|format(child_info.overall_mean) }}%</h3>
+                {% if child_info.overall_grade_letter %}
+                <span class="badge bg-primary">{{ child_info.overall_grade_letter }}</span>
+                {% endif %}
+                <br><small class="text-muted">Based on {{ child_info.grade_count }} grades</small>
+              </div>
+            </div>
+          </div>
+          <a href="{{ url_for('my_children') }}" class="btn btn-primary btn-sm w-100 mt-2">View Full Details</a>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+  <div class="col-md-12">
+    <div class="alert alert-info">
+      <h5>No Children Linked</h5>
+      <p>You don't have any children linked to your account. Please contact an administrator to link your children.</p>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
 {% endblock %}

@@ -1,0 +1,126 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3>Manage Class: {{ class_obj.name }}</h3>
+  <a href="{{ url_for('classes_page') }}" class="btn btn-secondary">Back to Classes</a>
+</div>
+
+<div class="row">
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-header">
+        <h5>Class Information</h5>
+      </div>
+      <div class="card-body">
+        <form method="POST">
+          <div class="mb-3">
+            <label for="teacher_id" class="form-label">Assign Teacher</label>
+            <select class="form-select" id="teacher_id" name="teacher_id" onchange="this.form.submit()">
+              <option value="None">No Teacher</option>
+              {% for teacher in teachers %}
+              <option value="{{ teacher.id }}" {% if class_obj.teacher_id == teacher.id %}selected{% endif %}>
+                {{ teacher.name }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+        </form>
+        
+        <hr>
+        <p><strong>Current Teacher:</strong> 
+          {% if class_obj.teacher_id %}
+            {% set teacher = teachers|selectattr('id', 'equalto', class_obj.teacher_id)|first %}
+            {{ teacher.name if teacher else 'Unknown' }}
+          {% else %}
+            <span class="text-muted">Not Assigned</span>
+          {% endif %}
+        </p>
+        <p><strong>Students in Class:</strong> {{ students_in_class|length }}</p>
+      </div>
+    </div>
+  </div>
+  
+  <div class="col-md-8">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Students in Class</h5>
+        <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#addStudentModal">
+          Add Student to Class
+        </button>
+      </div>
+      <div class="card-body">
+        {% if students_in_class %}
+        <div class="table-responsive">
+          <table class="table table-striped">
+            <thead>
+              <tr>
+                <th>Admission No.</th>
+                <th>Name</th>
+                <th>Gender</th>
+                <th>Date of Birth</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for student in students_in_class %}
+              <tr>
+                <td>{{ student.admission_no }}</td>
+                <td>{{ student.name }}</td>
+                <td>{{ student.gender or '-' }}</td>
+                <td>{{ student.dob.strftime('%Y-%m-%d') if student.dob else '-' }}</td>
+                <td>
+                  <form method="POST" action="{{ url_for('manage_class', id=class_obj.id) }}" style="display: inline;">
+                    <input type="hidden" name="student_id" value="{{ student.id }}">
+                    <input type="hidden" name="remove" value="1">
+                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Remove student from this class?')">
+                      Remove
+                    </button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="text-muted">No students assigned to this class.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Student Modal -->
+<div class="modal fade" id="addStudentModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="POST" action="{{ url_for('manage_class', id=class_obj.id) }}" class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Add Student to Class</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label for="student_id" class="form-label">Select Student <span class="text-danger">*</span></label>
+          <select class="form-select" id="student_id" name="student_id" required>
+            <option value="">Select a student</option>
+            {% for student in students_not_in_class %}
+            <option value="{{ student.id }}">
+              {{ student.name }} ({{ student.admission_no }})
+              {% if student.class_rel %}
+                - Currently in {{ student.class_rel.name }}
+              {% endif %}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Add to Class</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+

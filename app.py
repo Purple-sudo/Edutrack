@@ -606,14 +606,79 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    total_students = Student.query.count()
-    total_classes = Class.query.count()
-    total_teachers = User.query.join(Role).filter(Role.name == 'Teacher').count()
-    return render_template('dashboard.html', 
-                         total_students=total_students, 
-                         total_classes=total_classes,
-                         total_teachers=total_teachers,
-                         user_role=current_user.role.name)
+    user_role = current_user.role.name
+    context = {'user_role': user_role}
+    
+    if user_role == 'Admin':
+        context.update({
+            'total_students': Student.query.count(),
+            'total_classes': Class.query.count(),
+            'total_teachers': User.query.join(Role).filter(Role.name == 'Teacher').count(),
+            'total_subjects': Subject.query.count(),
+            'total_grades': Grade.query.count(),
+            'total_parents': User.query.join(Role).filter(Role.name == 'Parent').count()
+        })
+    elif user_role == 'Teacher':
+        # Get teacher's classes
+        my_classes = Class.query.filter_by(teacher_id=current_user.id).all()
+        my_subjects = current_user.subjects.all()
+        my_grades = Grade.query.filter_by(teacher_id=current_user.id).all()
+        recent_grades = Grade.query.filter_by(teacher_id=current_user.id).order_by(Grade.created_at.desc()).limit(5).all()
+        
+        context.update({
+            'my_classes': my_classes,
+            'my_subjects': my_subjects,
+            'total_grades': len(my_grades),
+            'recent_grades': recent_grades
+        })
+    elif user_role == 'Student':
+        # Find student record
+        student = Student.query.filter_by(name=current_user.name).first()
+        if student:
+            grades = Grade.query.filter_by(student_id=student.id).all()
+            overall_mean, grade_count = calculate_overall_mean(grades)
+            overall_grade_letter, overall_description = get_grade_letter(overall_mean) if overall_mean > 0 else (None, None)
+            recent_grades = Grade.query.filter_by(student_id=student.id).order_by(Grade.date_given.desc()).limit(5).all()
+            
+            # Group by subject
+            subject_grades = {}
+            for grade in grades:
+                subj_name = grade.subject.name if grade.subject else 'Unknown'
+                if subj_name not in subject_grades:
+                    subject_grades[subj_name] = []
+                percentage = (grade.grade_value / grade.max_grade * 100) if grade.max_grade > 0 else 0
+                subject_grades[subj_name].append(percentage)
+            
+            context.update({
+                'student': student,
+                'overall_mean': overall_mean,
+                'overall_grade_letter': overall_grade_letter,
+                'overall_description': overall_description,
+                'grade_count': grade_count,
+                'recent_grades': recent_grades,
+                'subject_grades': subject_grades
+            })
+    elif user_role == 'Parent':
+        children = current_user.children.all()
+        children_with_stats = []
+        for child in children:
+            grades = Grade.query.filter_by(student_id=child.id).all()
+            overall_mean, grade_count = calculate_overall_mean(grades)
+            overall_grade_letter, overall_description = get_grade_letter(overall_mean) if overall_mean > 0 else (None, None)
+            children_with_stats.append({
+                'student': child,
+                'overall_mean': overall_mean,
+                'overall_grade_letter': overall_grade_letter,
+                'grade_count': grade_count
+            })
+        context.update({
+            'children': children_with_stats,
+            'total_children': len(children_with_stats)
+        })
+    
+    # Make helper functions available in template
+    context['get_grade_letter'] = get_grade_letter
+    return render_template('dashboard.html', **context)
 # app.py (part 5) - students page and API
 
 @app.route('/students')
@@ -1309,6 +1374,180 @@ def delete_grade_scale(id):
     db.session.commit()
     flash('Grade scale deleted successfully!', 'success')
     return redirect(url_for('grade_scales'))
+
+# ==============================
+#   PROFILE: User Profile Management
+# ==============================
+@app.route('/profile')
+@login_required
+def profile():
+    return render_template('profile.html')
+
+@app.route('/profile/edit', methods=['GET', 'POST'])
+@login_required
+def edit_profile():
+    if request.method == 'POST':
+        name = request.form.get('name')
+        email = request.form.get('email')
+        
+        # Check if email is already taken by another user
+        existing_user = User.query.filter_by(email=email).first()
+        if existing_user and existing_user.id != current_user.id:
+            flash('Email already exists!', 'danger')
+            return render_template('edit_profile.html')
+        
+        current_user.name = name
+        current_user.email = email
+        db.session.commit()
+        flash('Profile updated successfully!', 'success')
+        return redirect(url_for('profile'))
+    
+    return render_template('edit_profile.html')
+
+@app.route('/profile/change-password', methods=['GET', 'POST'])
+@login_required
+def change_password():
+    if request.method == 'POST':
+        old_password = request.form.get('old_password')
+        new_password = request.form.get('new_password')
+        confirm_password = request.form.get('confirm_password')
+        
+        # Verify old password
+        if not check_password_hash(current_user.password_hash, old_password):
+            flash('Current password is incorrect!', 'danger')
+            return render_template('change_password.html')
+        
+        # Check if new passwords match
+        if new_password != confirm_password:
+            flash('New passwords do not match!', 'danger')
+            return render_template('change_password.html')
+        
+        # Check password length
+        if len(new_password) < 6:
+            flash('Password must be at least 6 characters long!', 'danger')
+            return render_template('change_password.html')
+        
+        # Update password
+        current_user.password_hash = generate_password_hash(new_password)
+        db.session.commit()
+        flash('Password changed successfully!', 'success')
+        return redirect(url_for('profile'))
+    
+    return render_template('change_password.html')
+
+# ==============================
+#   ADMIN: Parent-Student Management
+# ==============================
+@app.route('/parent-student-links')
+@login_required
+def parent_student_links():
+    if current_user.role.name != 'Admin':
+        flash("Access denied: Admins only.")
+        return redirect(url_for('dashboard'))
+    
+    parents = User.query.join(Role).filter(Role.name == 'Parent').all()
+    students = Student.query.all()
+    
+    # Get existing links
+    links = []
+    for parent in parents:
+        children = parent.children.all()
+        for child in children:
+            links.append({'parent_id': parent.id, 'student_id': child.id})
+    
+    return render_template('parent_student_links.html', parents=parents, students=students, links=links)
+
+@app.route('/parent-student-links/link', methods=['POST'])
+@login_required
+def link_parent_student():
+    if current_user.role.name != 'Admin':
+        flash("Access denied: Admins only.")
+        return redirect(url_for('dashboard'))
+    
+    parent_id = request.form.get('parent_id')
+    student_id = request.form.get('student_id')
+    
+    parent = User.query.get_or_404(parent_id)
+    student = Student.query.get_or_404(student_id)
+    
+    if student not in parent.children.all():
+        parent.children.append(student)
+        db.session.commit()
+        flash(f'Successfully linked {parent.name} to {student.name}!', 'success')
+    else:
+        flash('Link already exists!', 'info')
+    
+    return redirect(url_for('parent_student_links'))
+
+@app.route('/parent-student-links/unlink/<int:parent_id>/<int:student_id>', methods=['POST'])
+@login_required
+def unlink_parent_student(parent_id, student_id):
+    if current_user.role.name != 'Admin':
+        flash("Access denied: Admins only.")
+        return redirect(url_for('dashboard'))
+    
+    parent = User.query.get_or_404(parent_id)
+    student = Student.query.get_or_404(student_id)
+    
+    if student in parent.children.all():
+        parent.children.remove(student)
+        db.session.commit()
+        flash(f'Successfully unlinked {parent.name} from {student.name}!', 'success')
+    else:
+        flash('Link does not exist!', 'info')
+    
+    return redirect(url_for('parent_student_links'))
+
+# ==============================
+#   ADMIN: Class Management Enhancement
+# ==============================
+@app.route('/class/<int:id>/manage', methods=['GET', 'POST'])
+@login_required
+def manage_class(id):
+    if current_user.role.name != 'Admin':
+        flash("Access denied: Admins only.")
+        return redirect(url_for('classes_page'))
+    
+    class_obj = Class.query.get_or_404(id)
+    
+    if request.method == 'POST':
+        # Remove student from class
+        if request.form.get('remove'):
+            student_id = request.form.get('student_id')
+            if student_id:
+                student = Student.query.get_or_404(int(student_id))
+                student.class_id = None
+                db.session.commit()
+                flash(f'Student {student.name} removed from class!', 'success')
+                return redirect(url_for('manage_class', id=id))
+        
+        # Assign teacher
+        teacher_id = request.form.get('teacher_id')
+        if teacher_id:
+            class_obj.teacher_id = int(teacher_id) if teacher_id != 'None' else None
+            db.session.commit()
+            flash('Class updated successfully!', 'success')
+            return redirect(url_for('manage_class', id=id))
+        
+        # Assign student to class
+        student_id = request.form.get('student_id')
+        if student_id:
+            student = Student.query.get_or_404(int(student_id))
+            student.class_id = id
+            db.session.commit()
+            flash(f'Student {student.name} assigned to class!', 'success')
+            return redirect(url_for('manage_class', id=id))
+    
+    # Get class students
+    students_in_class = Student.query.filter_by(class_id=id).all()
+    students_not_in_class = Student.query.filter((Student.class_id != id) | (Student.class_id.is_(None))).all()
+    teachers = User.query.join(Role).filter(Role.name == 'Teacher').all()
+    
+    return render_template('manage_class.html', 
+                         class_obj=class_obj, 
+                         students_in_class=students_in_class,
+                         students_not_in_class=students_not_in_class,
+                         teachers=teachers)
 
 # ==============================
 #   PARENT: Children Management
