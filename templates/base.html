@@ -32,14 +32,19 @@
                 <li class="nav-item"><a class="nav-link" href="{{ url_for('parent_student_links') }}">Parent Links</a></li>
               {% endif %}
               <li class="nav-item dropdown">
-                <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
-                  {{ current_user.name }}
+                <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                  <strong>{{ current_user.name }}</strong> <small class="text-muted">({{ current_user.role.name }})</small>
                 </a>
-                <ul class="dropdown-menu">
-                  <li><a class="dropdown-item" href="{{ url_for('profile') }}">My Profile</a></li>
+                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
+                  <li><a class="dropdown-item" href="{{ url_for('profile') }}">📋 My Profile</a></li>
                   <li><hr class="dropdown-divider"></li>
-                  <li><a class="dropdown-item" href="{{ url_for('logout') }}">Logout</a></li>
+                  <li><a class="dropdown-item text-danger" href="{{ url_for('logout') }}">🚪 Logout</a></li>
                 </ul>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link text-danger" href="{{ url_for('logout') }}" title="Logout">
+                  <strong>Logout</strong>
+                </a>
               </li>
             {% endif %}
           </ul>
