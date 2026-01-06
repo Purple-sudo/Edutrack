@@ -689,7 +689,18 @@ def students_page():
         flash("Access denied: Admins and Teachers only.")
         return redirect(url_for('dashboard'))
     
-    return render_template('students.html')
+    # Get students grouped by class
+    all_classes = Class.query.all()
+    students_by_class = {}
+    for class_obj in all_classes:
+        students_by_class[class_obj.name] = Student.query.filter_by(class_id=class_obj.id).all()
+    
+    # Students without class
+    students_without_class = Student.query.filter_by(class_id=None).all()
+    if students_without_class:
+        students_by_class['Unassigned'] = students_without_class
+    
+    return render_template('students.html', students_by_class=students_by_class, all_classes=all_classes)
 
 @app.route('/api/students', methods=['GET','POST'])
 @login_required
@@ -1540,7 +1551,10 @@ def manage_class(id):
     
     # Get class students
     students_in_class = Student.query.filter_by(class_id=id).all()
-    students_not_in_class = Student.query.filter((Student.class_id != id) | (Student.class_id.is_(None))).all()
+    # Get students not in this class (including those without a class)
+    students_not_in_class = Student.query.filter(
+        db.or_(Student.class_id != id, Student.class_id.is_(None))
+    ).all()
     teachers = User.query.join(Role).filter(Role.name == 'Teacher').all()
     
     return render_template('manage_class.html', 

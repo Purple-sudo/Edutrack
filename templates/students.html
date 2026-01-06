@@ -3,22 +3,89 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h3>Students</h3>
-  <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addStudentModal">Add Student</button>
+  <div>
+    <button class="btn btn-info me-2" onclick="toggleView()" id="toggleViewBtn">
+      <span id="viewIcon">📋</span> <span id="viewText">Table View</span>
+    </button>
+    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addStudentModal">Add Student</button>
+  </div>
 </div>
 
-<table class="table table-striped" id="studentsTable">
-  <thead>
-<tr>
-<th>Admission No</th>
-<th>Name</th>
-<th>Class</th>
-<th>Date of Birth</th>
-<th>Gender</th>
-<th>Actions</th>
-</tr>
-</thead>
-  <tbody></tbody>
-</table>
+<!-- Grouped View by Class -->
+<div id="groupedView">
+  {% if students_by_class %}
+    {% for class_name, students in students_by_class.items() %}
+    <div class="card mb-3">
+      <div class="card-header d-flex justify-content-between align-items-center bg-primary text-white">
+        <h5 class="mb-0">
+          <i class="fas fa-users"></i> {{ class_name }}
+          <span class="badge bg-light text-dark ms-2">{{ students|length }} student{{ 's' if students|length != 1 else '' }}</span>
+        </h5>
+        {% if class_name != 'Unassigned' %}
+          {% set class_obj = all_classes|selectattr('name', 'equalto', class_name)|first %}
+          {% if class_obj %}
+            <a href="{{ url_for('manage_class', id=class_obj.id) }}" class="btn btn-sm btn-light">Manage Class</a>
+          {% endif %}
+        {% endif %}
+      </div>
+      <div class="card-body">
+        {% if students %}
+        <div class="table-responsive">
+          <table class="table table-sm table-hover">
+            <thead>
+              <tr>
+                <th>Admission No</th>
+                <th>Name</th>
+                <th>Gender</th>
+                <th>Date of Birth</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for student in students %}
+              <tr>
+                <td>{{ student.admission_no or '-' }}</td>
+                <td><strong>{{ student.name }}</strong></td>
+                <td>{{ student.gender or '-' }}</td>
+                <td>{{ student.dob.strftime('%Y-%m-%d') if student.dob else '-' }}</td>
+                <td>
+                  <button class="btn btn-sm btn-warning" onclick="editStudentFromGrouped({{ student.id }})">Edit</button>
+                  <button class="btn btn-sm btn-danger" onclick="deleteStudentFromGrouped({{ student.id }})">Delete</button>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">No students in this class.</p>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+  <div class="alert alert-info">
+    <p class="mb-0">No students found. Add your first student to get started.</p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Table View (Default Hidden) -->
+<div id="tableView" style="display: none;">
+  <table class="table table-striped" id="studentsTable">
+    <thead>
+      <tr>
+        <th>Admission No</th>
+        <th>Name</th>
+        <th>Class</th>
+        <th>Date of Birth</th>
+        <th>Gender</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
 
 <!-- Add student modal -->
 <div class="modal fade" id="addStudentModal" tabindex="-1">
@@ -146,8 +213,30 @@ async function loadClassesForDropdown(selectedId) {
   }
 }
 
+function toggleView() {
+  const groupedView = document.getElementById('groupedView');
+  const tableView = document.getElementById('tableView');
+  const viewIcon = document.getElementById('viewIcon');
+  const viewText = document.getElementById('viewText');
+  
+  if (groupedView.style.display === 'none') {
+    groupedView.style.display = 'block';
+    tableView.style.display = 'none';
+    viewIcon.textContent = '📋';
+    viewText.textContent = 'Table View';
+  } else {
+    groupedView.style.display = 'none';
+    tableView.style.display = 'block';
+    viewIcon.textContent = '👥';
+    viewText.textContent = 'Grouped View';
+    // Load table data if not already loaded
+    if (!$.fn.DataTable.isDataTable('#studentsTable')) {
+      loadStudents();
+    }
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-  loadStudents();
   loadClassesForDropdown();
 
   const form = document.getElementById('addStudentForm');
@@ -179,7 +268,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (res.ok) {
       bootstrap.Modal.getOrCreateInstance(addModal).hide();
-      await loadStudents();
+      // If in grouped view, reload page; otherwise reload table
+      if (document.getElementById('groupedView').style.display !== 'none') {
+        window.location.reload();
+      } else {
+        await loadStudents();
+      }
     } else {
       console.error('Save failed', res.status, await res.text());
       alert('Error saving student — check console or server logs.');
@@ -221,6 +315,53 @@ async function deleteStudent(id) {
     const res = await fetch(`/api/students/${id}`, { method: 'DELETE' });
     if (res.ok) {
       await loadStudents();
+      // Reload page to refresh grouped view
+      if (document.getElementById('groupedView').style.display !== 'none') {
+        window.location.reload();
+      }
+    } else {
+      alert('Failed to delete student.');
+    }
+  } catch (error) {
+    console.error('Error deleting student:', error);
+  }
+}
+
+async function editStudentFromGrouped(id) {
+  const addModal = document.getElementById('addStudentModal');
+  const form = document.getElementById('addStudentForm');
+  const modalTitle = addModal.querySelector('.modal-title');
+
+  try {
+    const res = await fetch(`/api/students/${id}`);
+    if (!res.ok) {
+      alert('Failed to load student details.');
+      return;
+    }
+    const s = await res.json();
+
+    form.querySelector('[name="id"]').value = s.id ?? '';
+    form.querySelector('[name="admission_no"]').value = s.admission_no ?? '';
+    form.querySelector('[name="name"]').value = s.name ?? '';
+    form.querySelector('[name="dob"]').value = s.dob ?? '';
+    form.querySelector('[name="gender"]').value = s.gender ?? '';
+    await loadClassesForDropdown(s.class_id);
+    modalTitle.textContent = 'Edit Student';
+
+    bootstrap.Modal.getOrCreateInstance(addModal).show();
+  } catch (err) {
+    console.error('Error loading student:', err);
+    alert('Failed to load student details.');
+  }
+}
+
+async function deleteStudentFromGrouped(id) {
+  if (!confirm('Are you sure you want to delete this student?')) return;
+  try {
+    const res = await fetch(`/api/students/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      // Reload page to refresh grouped view
+      window.location.reload();
     } else {
       alert('Failed to delete student.');
     }
