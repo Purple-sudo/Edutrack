@@ -147,6 +147,54 @@ class Grade(db.Model):
             'created_at': self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None
         }
 
+class GradeScale(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    grade_letter = db.Column(db.String(10), nullable=False)  # e.g., 'A', 'B', 'C', 'D', 'F'
+    min_percentage = db.Column(db.Float, nullable=False)  # e.g., 90.0 for A
+    max_percentage = db.Column(db.Float, nullable=False)  # e.g., 100.0 for A
+    description = db.Column(db.String(100), nullable=True)  # e.g., 'Excellent'
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationship
+    creator = db.relationship('User', backref='grade_scales')
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'grade_letter': self.grade_letter,
+            'min_percentage': self.min_percentage,
+            'max_percentage': self.max_percentage,
+            'description': self.description,
+            'created_by': self.created_by,
+            'created_at': self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None
+        }
+
+# Helper functions for grade calculations
+def get_grade_letter(percentage):
+    """Get grade letter based on percentage using the grade scale (highest to lowest)"""
+    grade_scales = GradeScale.query.order_by(GradeScale.max_percentage.desc()).all()
+    for scale in grade_scales:
+        if scale.min_percentage <= percentage <= scale.max_percentage:
+            return scale.grade_letter, scale.description
+    return None, None
+
+def calculate_overall_mean(grades):
+    """Calculate overall mean percentage from a list of grades"""
+    if not grades:
+        return 0, 0
+    
+    total_percentage = 0
+    count = 0
+    for grade in grades:
+        if grade.max_grade > 0:
+            percentage = (grade.grade_value / grade.max_grade) * 100
+            total_percentage += percentage
+            count += 1
+    
+    mean = round(total_percentage / count, 2) if count > 0 else 0
+    return mean, count
+
 # app.py (part 3) - login loader & seed command
 @login_manager.user_loader
 def load_user(user_id):
@@ -392,6 +440,35 @@ def initdata():
         db.session.commit()
         print('[OK] Created subjects and assigned to teachers')
     
+    # Create default grade scales if they don't exist
+    if not GradeScale.query.first():
+        default_scales = [
+            {'grade_letter': 'A', 'min_percentage': 90.0, 'max_percentage': 100.0, 'description': 'Excellent'},
+            {'grade_letter': 'B+', 'min_percentage': 85.0, 'max_percentage': 89.9, 'description': 'Very Good'},
+            {'grade_letter': 'B', 'min_percentage': 80.0, 'max_percentage': 84.9, 'description': 'Good'},
+            {'grade_letter': 'C+', 'min_percentage': 75.0, 'max_percentage': 79.9, 'description': 'Above Average'},
+            {'grade_letter': 'C', 'min_percentage': 70.0, 'max_percentage': 74.9, 'description': 'Average'},
+            {'grade_letter': 'D+', 'min_percentage': 65.0, 'max_percentage': 69.9, 'description': 'Below Average'},
+            {'grade_letter': 'D', 'min_percentage': 60.0, 'max_percentage': 64.9, 'description': 'Pass'},
+            {'grade_letter': 'F', 'min_percentage': 0.0, 'max_percentage': 59.9, 'description': 'Fail'},
+        ]
+        
+        teacher_users_db = User.query.join(Role).filter(Role.name == 'Teacher').first()
+        creator_id = teacher_users_db.id if teacher_users_db else None
+        
+        for scale_data in default_scales:
+            scale = GradeScale(
+                grade_letter=scale_data['grade_letter'],
+                min_percentage=scale_data['min_percentage'],
+                max_percentage=scale_data['max_percentage'],
+                description=scale_data['description'],
+                created_by=creator_id
+            )
+            db.session.add(scale)
+        
+        db.session.commit()
+        print('[OK] Created default grade scales (A to F)')
+    
     # Create sample grades
     if not Grade.query.first():
         students = Student.query.all()
@@ -623,6 +700,15 @@ def delete_student(id):
         return jsonify({'error': 'Access denied'}), 403
     
     student = Student.query.get_or_404(id)
+    
+    # Delete all grades associated with this student
+    Grade.query.filter_by(student_id=student.id).delete()
+    
+    # Remove student from parent relationships
+    # Clear the many-to-many relationship
+    student.parents = []
+    
+    # Now delete the student
     db.session.delete(student)
     db.session.commit()
     return jsonify({'message': 'Deleted successfully'}), 200
@@ -919,11 +1005,36 @@ def grades():
     else:  # Admin
         grades = Grade.query.order_by(Grade.date_given.desc()).all()
     
+    # Calculate overall mean grade
+    overall_mean, grade_count = calculate_overall_mean(grades)
+    overall_grade_letter, overall_description = get_grade_letter(overall_mean) if overall_mean > 0 else (None, None)
+    
+    # Get grade letters for each grade
+    grades_with_letters = []
+    for grade in grades:
+        percentage = (grade.grade_value / grade.max_grade * 100) if grade.max_grade > 0 else 0
+        grade_letter, grade_desc = get_grade_letter(percentage)
+        grades_with_letters.append({
+            'grade': grade,
+            'percentage': round(percentage, 2),
+            'grade_letter': grade_letter,
+            'grade_description': grade_desc
+        })
+    
     # Get all students and subjects for filters
     students = Student.query.all()
     subjects = Subject.query.all()
     
-    return render_template('grades.html', grades=grades, students=students, subjects=subjects)
+    return render_template('grades.html', 
+                         grades_with_letters=grades_with_letters,
+                         grades=grades,  # Keep for backward compatibility
+                         students=students, 
+                         subjects=subjects,
+                         overall_mean=overall_mean,
+                         overall_grade_letter=overall_grade_letter,
+                         overall_description=overall_description,
+                         grade_count=grade_count,
+                         get_grade_letter=get_grade_letter)  # Make function available in template
 
 @app.route('/grade/add', methods=['GET', 'POST'])
 @login_required
@@ -1058,6 +1169,212 @@ def api_grades():
         grades = Grade.query.all()
     
     return jsonify([g.to_dict() for g in grades])
+
+# ==============================
+#   GRADE SCALE: Grade Scale Management
+# ==============================
+@app.route('/grade-scales')
+@login_required
+def grade_scales():
+    # Only teachers and admins can access grade scales
+    if current_user.role.name not in ['Admin', 'Teacher']:
+        flash("Access denied: Teachers and Admins only.")
+        return redirect(url_for('dashboard'))
+    
+    # Get all grade scales, ordered by max_percentage (highest to lowest)
+    scales = GradeScale.query.order_by(GradeScale.max_percentage.desc()).all()
+    
+    return render_template('grade_scales.html', scales=scales)
+
+@app.route('/grade-scale/add', methods=['GET', 'POST'])
+@login_required
+def add_grade_scale():
+    # Only teachers and admins can add grade scales
+    if current_user.role.name not in ['Admin', 'Teacher']:
+        flash("Access denied: Teachers and Admins only.")
+        return redirect(url_for('grade_scales'))
+    
+    if request.method == 'POST':
+        grade_letter = request.form.get('grade_letter').strip().upper()
+        min_percentage = float(request.form.get('min_percentage'))
+        max_percentage = float(request.form.get('max_percentage'))
+        description = request.form.get('description', '').strip()
+        
+        # Validate ranges
+        if min_percentage < 0 or max_percentage > 100:
+            flash('Percentages must be between 0 and 100!', 'danger')
+            return render_template('add_grade_scale.html')
+        
+        if min_percentage > max_percentage:
+            flash('Minimum percentage cannot be greater than maximum percentage!', 'danger')
+            return render_template('add_grade_scale.html')
+        
+        # Check if grade letter already exists
+        if GradeScale.query.filter_by(grade_letter=grade_letter).first():
+            flash(f'Grade letter {grade_letter} already exists!', 'danger')
+            return render_template('add_grade_scale.html')
+        
+        # Check for overlapping ranges
+        overlapping = GradeScale.query.filter(
+            ((GradeScale.min_percentage <= min_percentage <= GradeScale.max_percentage) |
+             (GradeScale.min_percentage <= max_percentage <= GradeScale.max_percentage) |
+             (min_percentage <= GradeScale.min_percentage <= max_percentage) |
+             (min_percentage <= GradeScale.max_percentage <= max_percentage))
+        ).first()
+        
+        if overlapping:
+            flash(f'Percentage range overlaps with existing grade scale ({overlapping.grade_letter}: {overlapping.min_percentage}-{overlapping.max_percentage}%)!', 'danger')
+            return render_template('add_grade_scale.html')
+        
+        scale = GradeScale(
+            grade_letter=grade_letter,
+            min_percentage=min_percentage,
+            max_percentage=max_percentage,
+            description=description,
+            created_by=current_user.id
+        )
+        
+        db.session.add(scale)
+        db.session.commit()
+        flash('Grade scale added successfully!', 'success')
+        return redirect(url_for('grade_scales'))
+    
+    return render_template('add_grade_scale.html')
+
+@app.route('/grade-scale/edit/<int:id>', methods=['GET', 'POST'])
+@login_required
+def edit_grade_scale(id):
+    # Only teachers and admins can edit grade scales
+    if current_user.role.name not in ['Admin', 'Teacher']:
+        flash("Access denied: Teachers and Admins only.")
+        return redirect(url_for('grade_scales'))
+    
+    scale = GradeScale.query.get_or_404(id)
+    
+    if request.method == 'POST':
+        grade_letter = request.form.get('grade_letter').strip().upper()
+        min_percentage = float(request.form.get('min_percentage'))
+        max_percentage = float(request.form.get('max_percentage'))
+        description = request.form.get('description', '').strip()
+        
+        # Validate ranges
+        if min_percentage < 0 or max_percentage > 100:
+            flash('Percentages must be between 0 and 100!', 'danger')
+            return render_template('edit_grade_scale.html', scale=scale)
+        
+        if min_percentage > max_percentage:
+            flash('Minimum percentage cannot be greater than maximum percentage!', 'danger')
+            return render_template('edit_grade_scale.html', scale=scale)
+        
+        # Check if grade letter already exists (excluding current scale)
+        existing = GradeScale.query.filter_by(grade_letter=grade_letter).first()
+        if existing and existing.id != id:
+            flash(f'Grade letter {grade_letter} already exists!', 'danger')
+            return render_template('edit_grade_scale.html', scale=scale)
+        
+        # Check for overlapping ranges (excluding current scale)
+        overlapping = GradeScale.query.filter(
+            GradeScale.id != id,
+            ((GradeScale.min_percentage <= min_percentage <= GradeScale.max_percentage) |
+             (GradeScale.min_percentage <= max_percentage <= GradeScale.max_percentage) |
+             (min_percentage <= GradeScale.min_percentage <= max_percentage) |
+             (min_percentage <= GradeScale.max_percentage <= max_percentage))
+        ).first()
+        
+        if overlapping:
+            flash(f'Percentage range overlaps with existing grade scale ({overlapping.grade_letter}: {overlapping.min_percentage}-{overlapping.max_percentage}%)!', 'danger')
+            return render_template('edit_grade_scale.html', scale=scale)
+        
+        scale.grade_letter = grade_letter
+        scale.min_percentage = min_percentage
+        scale.max_percentage = max_percentage
+        scale.description = description
+        
+        db.session.commit()
+        flash('Grade scale updated successfully!', 'success')
+        return redirect(url_for('grade_scales'))
+    
+    return render_template('edit_grade_scale.html', scale=scale)
+
+@app.route('/grade-scale/delete/<int:id>', methods=['POST'])
+@login_required
+def delete_grade_scale(id):
+    # Only teachers and admins can delete grade scales
+    if current_user.role.name not in ['Admin', 'Teacher']:
+        flash("Access denied: Teachers and Admins only.")
+        return redirect(url_for('grade_scales'))
+    
+    scale = GradeScale.query.get_or_404(id)
+    db.session.delete(scale)
+    db.session.commit()
+    flash('Grade scale deleted successfully!', 'success')
+    return redirect(url_for('grade_scales'))
+
+# ==============================
+#   PARENT: Children Management
+# ==============================
+@app.route('/my-children')
+@login_required
+def my_children():
+    # Only parents can access this page
+    if current_user.role.name != 'Parent':
+        flash("Access denied: Parents only.")
+        return redirect(url_for('dashboard'))
+    
+    # Get all children for the current parent
+    children = current_user.children.all()
+    
+    # Prepare data for each child
+    children_data = []
+    for child in children:
+        # Get child's class and teacher
+        class_name = child.class_rel.name if child.class_rel else 'Not Assigned'
+        teacher = None
+        teacher_name = 'Not Assigned'
+        if child.class_rel and child.class_rel.teacher_id:
+            teacher = User.query.get(child.class_rel.teacher_id)
+            teacher_name = teacher.name if teacher else 'Not Assigned'
+        
+        # Get all grades for this child, sorted by date (most recent first)
+        grades = Grade.query.filter_by(student_id=child.id).order_by(Grade.date_given.desc()).all()
+        
+        # Calculate overall performance
+        total_percentage = 0
+        grade_count = 0
+        for grade in grades:
+            if grade.max_grade > 0:
+                percentage = (grade.grade_value / grade.max_grade) * 100
+                total_percentage += percentage
+                grade_count += 1
+        
+        average_percentage = round(total_percentage / grade_count, 2) if grade_count > 0 else 0
+        
+        # Determine performance status
+        if average_percentage >= 80:
+            performance_status = 'Excellent'
+            performance_class = 'success'
+        elif average_percentage >= 70:
+            performance_status = 'Good'
+            performance_class = 'info'
+        elif average_percentage >= 60:
+            performance_status = 'Average'
+            performance_class = 'warning'
+        else:
+            performance_status = 'Needs Improvement'
+            performance_class = 'danger'
+        
+        children_data.append({
+            'student': child,
+            'class_name': class_name,
+            'teacher_name': teacher_name,
+            'grades': grades,
+            'average_percentage': average_percentage,
+            'grade_count': grade_count,
+            'performance_status': performance_status,
+            'performance_class': performance_class
+        })
+    
+    return render_template('my_children.html', children_data=children_data)
 
 # app.py (part 6) - run
 if __name__ == '__main__':

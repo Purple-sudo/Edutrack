@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3>Grade Scales</h3>
+  <a href="{{ url_for('add_grade_scale') }}" class="btn btn-success">Add Grade Scale</a>
+</div>
+
+<div class="alert alert-info">
+  <strong>Grade Scales:</strong> Define percentage ranges for each grade letter (A, B, C, etc.). Scales are ordered from highest to lowest percentage.
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h5 class="mb-0">Grade Scale Configuration</h5>
+  </div>
+  <div class="card-body">
+    {% if scales %}
+    <div class="table-responsive">
+      <table class="table table-striped table-hover">
+        <thead>
+          <tr>
+            <th>Order</th>
+            <th>Grade Letter</th>
+            <th>Min Percentage</th>
+            <th>Max Percentage</th>
+            <th>Description</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for scale in scales %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td><strong class="badge bg-primary fs-6">{{ scale.grade_letter }}</strong></td>
+            <td>{{ scale.min_percentage }}%</td>
+            <td>{{ scale.max_percentage }}%</td>
+            <td>{{ scale.description or '-' }}</td>
+            <td>
+              <a href="{{ url_for('edit_grade_scale', id=scale.id) }}" class="btn btn-sm btn-warning">Edit</a>
+              <form method="POST" action="{{ url_for('delete_grade_scale', id=scale.id) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this grade scale?')">
+                <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center text-muted py-4">
+      <p>No grade scales found. Create your first grade scale to start using percentage-based grading.</p>
+      <a href="{{ url_for('add_grade_scale') }}" class="btn btn-primary">Add Your First Grade Scale</a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+

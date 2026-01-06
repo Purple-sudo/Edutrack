@@ -15,13 +15,17 @@
         <div class="collapse navbar-collapse">
           <ul class="navbar-nav ms-auto">
             {% if current_user.is_authenticated %}
-              <li class="nav-item"><a class="nav-link" href="{{ url_for('students_page') }}">Students</a></li>
-              <li class="nav-item"><a class="nav-link" href="{{ url_for('classes_page') }}">Classes</a></li>
               {% if current_user.role.name in ['Admin', 'Teacher'] %}
+                <li class="nav-item"><a class="nav-link" href="{{ url_for('students_page') }}">Students</a></li>
+                <li class="nav-item"><a class="nav-link" href="{{ url_for('classes_page') }}">Classes</a></li>
                 <li class="nav-item"><a class="nav-link" href="{{ url_for('subjects') }}">Subjects</a></li>
+                <li class="nav-item"><a class="nav-link" href="{{ url_for('grade_scales') }}">Grade Scales</a></li>
               {% endif %}
               {% if current_user.role.name in ['Admin', 'Teacher', 'Student', 'Parent'] %}
                 <li class="nav-item"><a class="nav-link" href="{{ url_for('grades') }}">Grades</a></li>
+              {% endif %}
+              {% if current_user.role.name == 'Parent' %}
+                <li class="nav-item"><a class="nav-link" href="{{ url_for('my_children') }}">My Children</a></li>
               {% endif %}
               {% if current_user.role.name == 'Admin' %}
                 <li class="nav-item"><a class="nav-link" href="{{ url_for('teachers') }}">Teachers</a></li>
